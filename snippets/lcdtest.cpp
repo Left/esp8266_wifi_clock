@@ -9,6 +9,14 @@
 #include <unistd.h>
 
 #define PROGMEM
+#define LOW 0
+#define HIGH 1
+
+#define LSBFIRST 0 
+#define MSBFIRST 1
+
+void digitalWrite(int pin, int val) {}
+void shiftOut(int dataPin, int clockPin, int bitOrder, int value);
 
 unsigned long micros() {
     timeval tv1 = {0};

@@ -127,15 +127,15 @@ public:
         memset(screen, 0, sizeof(screen));
     }
 
-    uint8_t line8(int l) {
+    uint8_t line8(int l) const {
         return screen[l];
     }
 
-    int height() {
+    int height() const {
         return 8;
     }
 
-    int width() {
+    int width() const {
         return NUM_MAX*8;
     }
 
@@ -249,6 +249,88 @@ public:
             // printf("%s %s %s -> %d %ul\n", nextNextSecs.c_str(), secs.c_str(), nextSecs.c_str(), y, us); 
         }
     }
+};
+
+//======================================================================================================
+
+class MAX72xx {
+    // Opcodes for the MAX7221 and MAX7219
+    // All OP_DIGITn are offsets from OP_DIGIT0
+    #define	OP_NOOP         0 ///< MAX72xx opcode for NO OP
+    #define OP_DIGIT0       1 ///< MAX72xx opcode for DIGIT0
+    #define OP_DIGIT1       2 ///< MAX72xx opcode for DIGIT1
+    #define OP_DIGIT2       3 ///< MAX72xx opcode for DIGIT2
+    #define OP_DIGIT3       4 ///< MAX72xx opcode for DIGIT3
+    #define OP_DIGIT4       5 ///< MAX72xx opcode for DIGIT4
+    #define OP_DIGIT5       6 ///< MAX72xx opcode for DIGIT5
+    #define OP_DIGIT6       7 ///< MAX72xx opcode for DIGIT6
+    #define OP_DIGIT7       8 ///< MAX72xx opcode for DIGIT7
+    #define OP_DECODEMODE   9 ///< MAX72xx opcode for DECODE MODE
+    #define OP_INTENSITY   10 ///< MAX72xx opcode for SET INTENSITY
+    #define OP_SCANLIMIT   11 ///< MAX72xx opcode for SCAN LIMIT
+    #define OP_SHUTDOWN    12 ///< MAX72xx opcode for SHUT DOWN
+    #define OP_DISPLAYTEST 15 ///< MAX72xx opcode for DISPLAY TEST
+
+public:
+    MAX72xx(const LcdScreen& _screen, 
+            const int _CLK_PIN,
+            const int _DATA_PIN,
+            const int _CS_PIN) : 
+            screen(_screen), 
+            CLK_PIN(_CLK_PIN),
+            DATA_PIN(_DATA_PIN),
+            CS_PIN(_CS_PIN) {
+    }
+
+    void sendCmd(int addr, uint8_t cmd, uint8_t data) {
+        digitalWrite(CS_PIN, LOW);
+        for (int i = NUM_MAX - 1; i >= 0; i--) {
+            shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, i == addr ? cmd : 0);
+            shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, i == addr ? data : 0);
+        }
+        digitalWrite(CS_PIN, HIGH);
+    }
+
+    void sendCmdAll(uint8_t cmd, uint8_t data) {
+        digitalWrite(CS_PIN, LOW);
+        for (int i = NUM_MAX - 1; i >= 0; i--) {
+            shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, cmd);
+            shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, data);
+        }
+        digitalWrite(CS_PIN, HIGH);
+    }
+
+    void setup() {
+        pinMode(CS_PIN, OUTPUT);
+        pinMode(DATA_PIN, OUTPUT);
+        pinMode(CLK_PIN, OUTPUT);
+
+        digitalWrite(CS_PIN, HIGH);
+        sendCmdAll(OP_DISPLAYTEST, 0);
+        sendCmdAll(OP_SCANLIMIT, 7);
+        sendCmdAll(OP_DECODEMODE, 0);
+        sendCmdAll(OP_SHUTDOWN, 1);
+        sendCmdAll(OP_INTENSITY, 0); // minimum brightness
+    }
+
+    void refreshAll() {
+        for (int line = 0; line < 8; line++) {
+            digitalWrite(CS_PIN, LOW);
+            for (int chip = NUM_MAX - 1; chip >= 0; chip--) {
+                shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, OP_DIGIT0 + line);
+                shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, screen.line8(chip * 8 + line));
+            }
+            digitalWrite(CS_PIN, HIGH);
+        }
+        digitalWrite(CS_PIN, LOW);
+    }
+
+  private:
+    const int CLK_PIN;
+    const int DATA_PIN;
+    const int CS_PIN;
+
+    const LcdScreen& screen;
 };
 
 //======================================================================================================

@@ -15,47 +15,11 @@ byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing pack
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udp;
+
 LcdScreen screen;
+MAX72xx screenController(screen, D5, D7, D6);
 
-// Opcodes for the MAX7221 and MAX7219
-// All OP_DIGITn are offsets from OP_DIGIT0
-#define	OP_NOOP         0 ///< MAX72xx opcode for NO OP
-#define OP_DIGIT0       1 ///< MAX72xx opcode for DIGIT0
-#define OP_DIGIT1       2 ///< MAX72xx opcode for DIGIT1
-#define OP_DIGIT2       3 ///< MAX72xx opcode for DIGIT2
-#define OP_DIGIT3       4 ///< MAX72xx opcode for DIGIT3
-#define OP_DIGIT4       5 ///< MAX72xx opcode for DIGIT4
-#define OP_DIGIT5       6 ///< MAX72xx opcode for DIGIT5
-#define OP_DIGIT6       7 ///< MAX72xx opcode for DIGIT6
-#define OP_DIGIT7       8 ///< MAX72xx opcode for DIGIT7
-#define OP_DECODEMODE   9 ///< MAX72xx opcode for DECODE MODE
-#define OP_INTENSITY   10 ///< MAX72xx opcode for SET INTENSITY
-#define OP_SCANLIMIT   11 ///< MAX72xx opcode for SCAN LIMIT
-#define OP_SHUTDOWN    12 ///< MAX72xx opcode for SHUT DOWN
-#define OP_DISPLAYTEST 15 ///< MAX72xx opcode for DISPLAY TEST
-
-#define CLK_PIN   D5  // or SCK
-#define DATA_PIN  D7  // or MOSI
-#define CS_PIN    D6  // or SS
 #define BEEPER_PIN D2 // Beeper
-
-void sendCmd(int addr, byte cmd, byte data) {
-  digitalWrite(CS_PIN, LOW);
-  for(int i = NUM_MAX - 1; i >= 0; i--){
-    shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, i == addr ? cmd : 0);
-    shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, i == addr ? data : 0);
-  }
-  digitalWrite(CS_PIN, HIGH);
-}
-
-void sendCmdAll(byte cmd, byte data) {
-  digitalWrite(CS_PIN, LOW);
-  for(int i = NUM_MAX - 1; i >= 0; i--){
-    shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, cmd);
-    shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, data);
-  }
-  digitalWrite(CS_PIN, HIGH);
-}
 
 unsigned long step = 0;
 
@@ -63,17 +27,9 @@ int testCntr = 0;
 
 void setup() {
   // Initialize comms hardware
-  pinMode(CS_PIN, OUTPUT);
-  pinMode(DATA_PIN, OUTPUT);
-  pinMode(CLK_PIN, OUTPUT);
   pinMode(BEEPER_PIN, OUTPUT);
 
-  digitalWrite(CS_PIN, HIGH);
-  sendCmdAll(OP_DISPLAYTEST, 0);
-  sendCmdAll(OP_SCANLIMIT, 7);
-  sendCmdAll(OP_DECODEMODE, 0);
-  sendCmdAll(OP_SHUTDOWN, 1);
-  sendCmdAll(OP_INTENSITY, 0); // minimum brightness
+  screenController.setup();
 
   sceleton::setup();
 
@@ -83,18 +39,6 @@ void setup() {
 }
 
 unsigned long oldMicros = micros();
-
-void refreshAll() {
-  for (int line = 0; line < 8; line++) {
-    digitalWrite(CS_PIN, LOW);
-    for (int chip = NUM_MAX - 1; chip >= 0; chip--){
-      shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, OP_DIGIT0 + line);
-      shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, screen.line8(chip * 8 + line));
-    }
-    digitalWrite(CS_PIN, HIGH);
-  }
-  digitalWrite(CS_PIN, LOW);
-}
 
 uint32_t timeRetreivedInSec = 0;
 uint32_t initialUnixTime = 0;
@@ -129,19 +73,19 @@ void loop() {
       uint64_t micr = 1000000ul*epoch + micros()%1000000ul;
       screen.showTime(micr);
 
-      refreshAll();
+      screenController.refreshAll();
     }
 
     int m = (hours*100 + mins);
     sleeps = m > 2359 || m < 530; // From 22:30 to 5:30 - do not show screen
 
     if (sleeps) {
-      refreshAll();
+      screenController.refreshAll();
     }
   } else {
     const wchar_t* getTime = L"  Получаем время с сервера...  ";
     screen.printStr((micros() / 1000 / 50) % screen.getStrWidth(getTime), 0, getTime);
-    refreshAll();
+    screenController.refreshAll();
   }
 
   sceleton::loop();
