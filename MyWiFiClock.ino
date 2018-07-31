@@ -77,7 +77,7 @@ void loop() {
     }
 
     int m = (hours*100 + mins);
-    sleeps = m > 2359 || m < 530; // From 22:30 to 5:30 - do not show screen
+    sleeps = m > 2230 || m < 540; // From 22:30 to 5:30 - do not show screen
 
     if (sleeps) {
       screenController.refreshAll();

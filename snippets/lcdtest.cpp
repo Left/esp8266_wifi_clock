@@ -8,21 +8,44 @@
 #include <sstream>
 #include <unistd.h>
 
+#define DEC 10
+#define HEX 16
+#define OCT 8
+#define BIN 2
+#define BYTE 0
+
 #define PROGMEM
-#define LOW 0
-#define HIGH 1
+#define HIGH 0x1
+#define LOW  0x0
+
+#define INPUT 0x0
+#define OUTPUT 0x1
 
 #define LSBFIRST 0 
 #define MSBFIRST 1
 
+#define CHANGE 1
+#define FALLING 2
+#define RISING 3
+
+#define INTERNAL 3
+#define DEFAULT 1
+#define EXTERNAL 0
+
+void delay(unsigned long) {}
+void pinMode(int,int) {}
 void digitalWrite(int pin, int val) {}
 void shiftOut(int dataPin, int clockPin, int bitOrder, int value);
 
-unsigned long micros() {
+uint32_t micros() {
     timeval tv1 = {0};
     struct timezone tz = {0};
     gettimeofday(&tv1, &tz);
     return (((unsigned long)tv1.tv_sec - tz.tz_minuteswest*60) * 1000000l + tv1.tv_usec);
+}
+
+uint32_t millis() {
+    return micros() / 1000;
 }
 
 #include "../lcd.h"
@@ -67,7 +90,7 @@ int main(int argc, char const *argv[]) {
 
         printf("\n");
 
-        printf("Micros: %lu\n", micros());
+        printf("Micros: %u\n", micros());
 
         usleep(1000); // will sleep for 1 ms
     }
