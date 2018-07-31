@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "random": "cpp",
+        "cstddef": "cpp",
+        "*.ipp": "cpp",
+        "chrono": "cpp",
+        "bitset": "cpp",
+        "set": "cpp"
+    }
+}
