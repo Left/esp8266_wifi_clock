@@ -4,6 +4,33 @@
 
 #define NUM_MAX 4
 
+typedef const wchar_t* WSTR;
+
+const WSTR weekdays[] = {
+    L"Понедельник", 
+    L"Вторник",
+    L"Среда",
+    L"Четверг",
+    L"Пятница",
+    L"Суббота",
+    L"Воскресенье"
+};
+
+const WSTR monthes[] = {
+    L"Января",
+    L"Февраля",
+    L"Марта",
+    L"Апреля",
+    L"Мая",
+    L"Июня",
+    L"Июля",
+    L"Августа",
+    L"Сентября",
+    L"Октября",
+    L"Ноября",
+    L"Декабря"
+};
+
 const unsigned char midNumbers[][8] = {
   { 0x38, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x38 }, // 0
   { 0x10, 0x30, 0x50, 0x10, 0x10, 0x10, 0x10, 0x7c }, // 1
@@ -71,6 +98,14 @@ public:
         }
     }
 };
+
+const uint8_t leapYearMonth[] = {
+    31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+};
+const uint8_t regularYearMonth[] = {
+    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+};
+
 
 class LcdScreen {
 
@@ -174,7 +209,15 @@ public:
         return NULL;
     }
 
-    int getStrWidth(const wchar_t* str) {
+    int getStrWidth(const WSTR* strs, int strsCnt) {
+        int w = 0;
+        for (;strsCnt > 0; --strsCnt, ++strs) {
+            w += getStrWidth(*(strs)) + 1;
+        }
+        return w;
+    }
+
+    int getStrWidth(WSTR str) {
         int res = 0;
         for (int i=0; str[i] != 0; ++i) {
             const uint8_t* symbol = symbolPtrOrNull(str[i]);
@@ -188,8 +231,24 @@ public:
         return res;
     }
 
-    void printStr(int _x, int _y, const wchar_t* str) {
-        int xx = _x;
+    /**
+     * Prints several strings at once
+     */
+    int printStr(int _x, int _y, const WSTR* strs, int strsCnt) {
+        int ww = 0;
+        for (;strsCnt > 0; --strsCnt, ++strs) {
+            int w = printStr(_x, _y, *(strs));
+            ww += w + 1;
+            _x -= w + 1;
+        }
+        return ww;
+    }
+
+    /**
+     * Prints string and returns printed string width
+     */
+    int printStr(int _x, int _y, WSTR str) {
+        int w = 0;
         for (int i=0; str[i] != 0; ++i) {
             const uint8_t* symbol = symbolPtrOrNull(str[i]);
             if (symbol > fontUA && symbol < (fontUA + sizeof(fontUA))) {
@@ -198,20 +257,83 @@ public:
                 for (int x = 0; x < symbolW; ++x) {
                     uint8_t data = symbol[1 + x];
                     for (int y = 0; y < 8; ++y) {
-                        set(xx - x, y + _y, (data >> y) & 1);
+                        set(_x - w - x, y + _y, (data >> y) & 1);
                     }
                 }
-                xx -= symbolW + 1;
+                w += symbolW + 1;
             }
         }
-        
+        return w;        
+    }
+
+    struct RTC {
+        uint16_t dow;
+        uint16_t day;
+        uint16_t month;
+        uint16_t year; // 
+        bool leapYear;
+        uint16_t doy; // 0-based
+    };
+
+    static void epoc2rtc(uint32_t t, RTC &rtc) {
+        const int cycle400year = 365*400 + (100 - 3);
+        const int cycle100year = 365*100 + 25 - 1;
+        const int cycle4year = 365*4 + 3;
+        rtc.dow = (t + 3) % 7; // Day of week
+        rtc.year = 1970 + 
+            t / cycle400year * 400 + 
+            t / cycle100year * 100 + 
+            t / cycle4year * 4;
+        rtc.leapYear = rtc.year % 400 == 0 || (rtc.year % 100 != 0 && rtc.year % 4 == 0);
+
+        const uint8_t* dm = rtc.leapYear ? leapYearMonth : regularYearMonth;
+
+        rtc.doy = (((t + 719536) % cycle400year) % cycle100year) % cycle4year;
+        if (rtc.doy > 366) {
+            rtc.doy -= 366;
+        }
+        if (rtc.doy > 365) {
+            rtc.doy -= 365;
+        }
+        if (rtc.doy > 365) {
+            rtc.doy -= 365;
+        } 
+        rtc.month = 0;
+        int d = rtc.doy;
+        for (;d > 0;) {
+            d -= dm[rtc.month];
+            rtc.month++;
+        }
+        rtc.day = d;
     }
 
     /**
      * micros is current time in microseconds
      */
     void showTime(uint32_t daysSince1970, uint32_t millisSince1200) {
-        printf("%d %d\n", daysSince1970, millisSince1200);
+        printf("%d\n", daysSince1970);
+        if (millisSince1200 / 1000 % 30 < 10) {
+            RTC rtc = {0};
+            epoc2rtc(daysSince1970, rtc);
+            wchar_t yearStr[10] = { 0 };
+            swprintf(yearStr, sizeof(yearStr)/sizeof(yearStr[0]), L"%d", rtc.year);
+            wchar_t dayStr[10] = { 0 };
+            swprintf(dayStr, sizeof(dayStr)/sizeof(dayStr[0]), L"%d", rtc.day+1);
+            const WSTR ss[] = {
+                L"  ", 
+                weekdays[rtc.dow],
+                L", ",
+                dayStr,
+                L" ",
+                monthes[rtc.month],
+                L" ",
+                yearStr,
+                L" года ...  "
+            };
+            printStr((micros() / 1000 / 50) % getStrWidth(ss, sizeof(ss)/sizeof(ss[0])), 0, ss, sizeof(ss)/sizeof(ss[0]));
+            return;
+        }
+        
         int seconds = millisSince1200 / 1000;
         TimeComponent hours((seconds % 86400L) / 3600);
         TimeComponent mins((seconds % 3600) / 60);
