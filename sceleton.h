@@ -78,60 +78,53 @@ void setup() {
 
     webSocket.reset(new WebSocketsServer(8081, "*"));
     webSocket->onEvent([&](uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
-        switch (type)
-        {
-        case WStype_DISCONNECTED:
-        {
-            Serial.printf("[%u] Disconnected!\n", num);
-            break;
-        }
-        case WStype_CONNECTED:
-        {
-            IPAddress ip = webSocket->remoteIP(num);
-            Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-
-            // send message to client
-            debugPrint("Connected client " + String(num, DEC));
-            break;
-        }
-        case WStype_TEXT:
-        {
-            Serial.printf("[%u] get Text: %s\n", num, payload);
-            DynamicJsonBuffer jsonBuffer;
-
-            JsonObject &root = jsonBuffer.parseObject(payload);
-
-            if (!root.success())
-            {
-                Serial.println("parseObject() failed");
-                webSocket->sendTXT(num, "{ \"errorMsg\":\"Failed to parse JSON\" }");
-                return;
+        switch (type) {
+            case WStype_DISCONNECTED: {
+                Serial.printf("[%u] Disconnected!\n", num);
+                break;
             }
+            case WStype_CONNECTED: {
+                IPAddress ip = webSocket->remoteIP(num);
+                Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
 
-            String type = root[typeKey];
-            if (type == "wificredentials")
-            {
-                stringToFile(wifiFileName, root["ssid"]);
-                stringToFile(wifiPwdName, root["pwd"]);
-
-                webSocket->sendTXT(num, "{ \"result\":\"OK, will reboot\" }");
-                ESP.reset();
+                // send message to client
+                debugPrint("Connected client " + String(num, DEC));
+                break;
             }
+            case WStype_TEXT: {
+                Serial.printf("[%u] get Text: %s\n", num, payload);
+                DynamicJsonBuffer jsonBuffer;
 
-            // send data to all connected clients
-            // webSocket.broadcastTXT("message here");
-            break;
-        }
-        case WStype_BIN:
-        {
-            // Serial.printf("[%u] get binary length: %u\n", num, length);
-            // hexdump(payload, length);
-            debugPrint("Received binary packet of size " + String(length, DEC));
+                JsonObject &root = jsonBuffer.parseObject(payload);
 
-            // send message to client
-            // webSocket.sendBIN(num, payload, length);
-            break;
-        }
+                if (!root.success()) {
+                    Serial.println("parseObject() failed");
+                    webSocket->sendTXT(num, "{ \"errorMsg\":\"Failed to parse JSON\" }");
+                    return;
+                }
+
+                String type = root[typeKey];
+                if (type == "wificredentials") {
+                    stringToFile(wifiFileName, root["ssid"]);
+                    stringToFile(wifiPwdName, root["pwd"]);
+
+                    webSocket->sendTXT(num, "{ \"result\":\"OK, will reboot\" }");
+                    ESP.reset();
+                }
+
+                // send data to all connected clients
+                // webSocket.broadcastTXT("message here");
+                break;
+            }
+            case WStype_BIN: {
+                // Serial.printf("[%u] get binary length: %u\n", num, length);
+                // hexdump(payload, length);
+                debugPrint("Received binary packet of size " + String(length, DEC));
+
+                // send message to client
+                // webSocket.sendBIN(num, payload, length);
+                break;
+            }
         }
     });
     webSocket->begin();
