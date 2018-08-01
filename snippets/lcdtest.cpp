@@ -37,11 +37,15 @@ void pinMode(int,int) {}
 void digitalWrite(int pin, int val) {}
 void shiftOut(int dataPin, int clockPin, int bitOrder, int value);
 
-uint32_t micros() {
+uint64_t micros64() {
     timeval tv1 = {0};
     struct timezone tz = {0};
     gettimeofday(&tv1, &tz);
-    return (((unsigned long)tv1.tv_sec - tz.tz_minuteswest*60) * 1000000l + tv1.tv_usec);
+    return (((uint64_t)tv1.tv_sec - tz.tz_minuteswest*60ULL) * 1000000ULL + tv1.tv_usec);
+}
+
+uint32_t micros() {
+    return micros64() & 0xffffffff;
 }
 
 uint32_t millis() {
@@ -62,13 +66,17 @@ int main(int argc, char const *argv[]) {
     LcdScreen screen;
 
     for (int ii = 0; ii < 16000; ++ii) {
-        //
+        // Move cursor to top left
         putp( tparm( tigetstr((char *)"cup" ), 0, 0, 0, 0, 0, 0, 0, 0, 0 ) );
         
-        // screen.showTime(micros());
         screen.clear();
+
+        const uint64_t dayInSecs = (24*60*60);
+        screen.showTime(micros64() / dayInSecs / 1000000ull, (micros64() % (dayInSecs*1000000ull)/1000ull));
+
+        // screen.clear();
         // screen.printStr(31, 8 - micros() / 1000 / 100 % 16, "четверг");
-        screen.printStr((micros() / 1000 / 50) % 300, 0, L"Четверг aaa bbb ююю {} || sdf 0123456789");
+        // screen.printStr((micros() / 1000 / 50) % 300, 0, L"Четверг aaa bbb ююю {} || sdf 0123456789");
 
         /////////////////////////////////////////////////////////
         // OUT!

@@ -210,8 +210,9 @@ public:
     /**
      * micros is current time in microseconds
      */
-    void showTime(uint64_t micros) {
-        int seconds = micros / secInUs;
+    void showTime(uint32_t daysSince1970, uint32_t millisSince1200) {
+        printf("%d %d\n", daysSince1970, millisSince1200);
+        int seconds = millisSince1200 / 1000;
         TimeComponent hours((seconds % 86400L) / 3600);
         TimeComponent mins((seconds % 3600) / 60);
 
@@ -231,13 +232,13 @@ public:
                 Bitmask(midNumbers[mins.charAt(n) - '0']), true);
         }
 
-        int movingTimeUs = secInUs / 4;
+        int movingTimeUs = 1000 / 4; // Period of time to do seconds moving transition
         int smallFontHeight = 6;
         for(int n = 1; n >= 0; n--) {
             int y;
-            int us  = (micros % secInUs);
-            if (us >= (secInUs - movingTimeUs)) {
-                y = (smallFontHeight - (secInUs - us) * smallFontHeight / movingTimeUs);
+            int ms  = (millisSince1200 % 1000);
+            if (ms >= (1000 - movingTimeUs)) {
+                y = (smallFontHeight - (1000 - ms) * smallFontHeight / movingTimeUs);
             } else {
                 y = 0;
             }

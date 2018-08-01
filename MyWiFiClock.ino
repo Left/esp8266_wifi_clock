@@ -3,6 +3,7 @@
 #include <WiFiUdp.h>
 #include <core_esp8266_waveform.h>
 
+#include "worklogic.h"
 #include "lcd.h"
 
 unsigned int localPort = 2390;      // local port to listen for UDP packets
@@ -21,8 +22,6 @@ MAX72xx screenController(screen, D5, D7, D6);
 
 #define BEEPER_PIN D2 // Beeper
 
-unsigned long step = 0;
-
 int testCntr = 0;
 
 void setup() {
@@ -40,38 +39,35 @@ void setup() {
 
 unsigned long oldMicros = micros();
 
-uint32_t timeRetreivedInSec = 0;
+uint32_t timeRetreivedInMs = 0;
 uint32_t initialUnixTime = 0;
 uint32_t timeRequestedAt = 0;
 
 uint16_t hours = 0;
 uint16_t mins = 0;
-uint64_t epoch = 0;
+uint64_t nowMs = 0;
 boolean sleeps = false;
 
-const int updateTimeEachSec = 10; // 600
+const int updateTimeEachSec = 600; // By default, update time each 600 seconds
 
 void loop() {
-  if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInSec == 0 ? 5 : updateTimeEachSec)*1000))) {
+  if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInMs == 0 ? 5 : updateTimeEachSec)*1000))) {
     debugPrint("Requesting time");
     timeRequestedAt = millis();
     sendNTPpacket(timeServerIP); // send an NTP packet to a time server
   }
 
-  // long stepLength = (12000 + (30000*64 / (32 + 32 - abs(32 - step % 64))));
-  // debugPrint("stepLength="+String(stepLength, DEC));
   oldMicros = micros();
-  // nextPoint();
-  step++;
   testCntr++;
 
   screen.clear();
+  boolean wasSleeping = sleeps;
 
-  if (timeRetreivedInSec) {
+  if (timeRetreivedInMs) {
     updateTime();
     if (!sleeps) {
-      uint64_t micr = 1000000ul*epoch + micros()%1000000ul;
-      screen.showTime(micr);
+      uint64_t dayInMs = 24*60*60*1000;
+      screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
 
       screenController.refreshAll();
     }
@@ -80,6 +76,9 @@ void loop() {
     sleeps = m > 2230 || m < 540; // From 22:30 to 5:30 - do not show screen
 
     if (sleeps) {
+      if (!wasSleeping) {
+        debugPrint("Falling asleep");
+      }
       screenController.refreshAll();
     }
   } else {
@@ -119,11 +118,11 @@ void loop() {
     if (secsSince1900 > 118*365*24*60*60) {
       // now convert NTP time into everyday time:
       // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-      const unsigned long seventyYears = 2208988800UL;
+      const uint64_t seventyYears = 2208988800ULL;
       // subtract seventy years:
       unsigned long epoch2 = secsSince1900 - seventyYears;
 
-      timeRetreivedInSec = millis()/1000;
+      timeRetreivedInMs = millis();
       initialUnixTime = epoch2;
       
       debugPrint("Unix time = " + String(epoch2, DEC));
@@ -140,9 +139,10 @@ void loop() {
 void updateTime() {
   // UTC is the time at Greenwich Meridian (GMT)
   // print the hour (86400 equals secs per day)
-  epoch = initialUnixTime + (millis()/1000 - timeRetreivedInSec);
-  epoch += 3*60*60; // Timezone (UTC+3)
+  nowMs = initialUnixTime * 1000ull + ((uint64_t)millis() - (uint64_t)timeRetreivedInMs);
+  nowMs += 3*60*60*1000; // Timezone (UTC+3)
 
+  uint32_t epoch = nowMs/1000ull;
   hours = (epoch % 86400L) / 3600;
   mins = (epoch % 3600) / 60;
 
