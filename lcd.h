@@ -264,7 +264,6 @@ public:
      * micros is current time in microseconds
      */
     void showTime(uint32_t daysSince1970, uint32_t millisSince1200) {
-        printf("%d\n", daysSince1970);
         if (millisSince1200 / 1000 % 30 < 10) {
             date::RTC rtc = {0};
             date::epoc2rtc(daysSince1970, rtc);
