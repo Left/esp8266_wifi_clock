@@ -1,5 +1,7 @@
 #include <functional>
 
+#include "common.h"
+
 #include "fonts.h"
 #include "dateutil.h"
 
@@ -18,18 +20,18 @@ const WSTR weekdays[] = {
 };
 
 const WSTR monthes[] = {
-    L"Января",
-    L"Февраля",
-    L"Марта",
-    L"Апреля",
-    L"Мая",
-    L"Июня",
-    L"Июля",
-    L"Августа",
-    L"Сентября",
-    L"Октября",
-    L"Ноября",
-    L"Декабря"
+    L"января",
+    L"февраля",
+    L"марта",
+    L"апреля",
+    L"мая",
+    L"июня",
+    L"июля",
+    L"августа",
+    L"сентября",
+    L"октября",
+    L"ноября",
+    L"декабря"
 };
 
 const unsigned char midNumbers[][8] = {
@@ -268,9 +270,9 @@ public:
             date::RTC rtc = {0};
             date::epoc2rtc(daysSince1970, rtc);
             wchar_t yearStr[10] = { 0 };
-            swprintf(yearStr, sizeof(yearStr)/sizeof(yearStr[0]), L"%d", rtc.year);
+            swprintf(yearStr, __countof(yearStr), L"%d", rtc.year);
             wchar_t dayStr[10] = { 0 };
-            swprintf(dayStr, sizeof(dayStr)/sizeof(dayStr[0]), L"%d", rtc.day+1);
+            swprintf(dayStr, __countof(dayStr), L"%d", rtc.day+1);
             const WSTR ss[] = {
                 L"  ", 
                 weekdays[rtc.dow],
@@ -278,11 +280,9 @@ public:
                 dayStr,
                 L" ",
                 monthes[rtc.month],
-                L" ",
-                yearStr,
-                L" года ...  "
+                L"   "
             };
-            printStr((micros() / 1000 / 50) % getStrWidth(ss, sizeof(ss)/sizeof(ss[0])), 0, ss, sizeof(ss)/sizeof(ss[0]));
+            printStr((millis() / 50) % getStrWidth(ss, __countof(ss)), 0, ss, __countof(ss));
             return;
         }
         
