@@ -80,6 +80,44 @@
                     "message": 5
                 }
             }
+        },
+        {
+            "label": "build_utf8_test",
+            "type": "shell",
+            "command": "g++",
+            "args": ["-o",
+                 "${workspaceRoot}/out/utf8decode.out", 
+                 "-lcurses", 
+                 "-std=c++11",
+                 "${workspaceRoot}/snippets/utf8decode.cpp"],
+            // use options.cwd property if the Makefile is not in the project root ${workspaceRoot} dir
+            "options": {
+                "cwd": "${workspaceRoot}/snippets"
+            },
+            // start the build without prompting for task selection, use "group": "build" otherwise
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            // Use the standard less compilation problem matcher.
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": ["absolute"],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
         }
     ]
 }

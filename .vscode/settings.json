@@ -5,6 +5,8 @@
         "*.ipp": "cpp",
         "chrono": "cpp",
         "bitset": "cpp",
-        "set": "cpp"
+        "set": "cpp",
+        "regex": "cpp",
+        "system_error": "cpp"
     }
 }

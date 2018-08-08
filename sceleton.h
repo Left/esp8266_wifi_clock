@@ -4,10 +4,13 @@
 #include <ESP8266WiFi.h>
 #include <WebSockets.h>
 #include <WebSocketsServer.h>
+#include <ESPAsyncWebServer.h>
 
 void debugPrint(const String& str);
 
 namespace sceleton {
+
+std::function<void(const char*)> showMessageSink = [](const char* s) {}; // Do nothing by default
 
 void stringToFile(const String& fileName, const String& value) {
     File f = SPIFFS.open(fileName.c_str(), "w");
@@ -33,6 +36,7 @@ const String typeKey("type");
 const char* wifiFileName = "wifi.name";
 const char* wifiPwdName = "wifi.pwd";
 
+std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsServer> webSocket;
 
 void setup() {
@@ -128,13 +132,38 @@ void setup() {
         }
     });
     webSocket->begin();
+
+    setupServer.reset(new AsyncWebServer(80));
+    setupServer->on("/", [](AsyncWebServerRequest *request) {
+        String content = "<!DOCTYPE HTML>\r\n<html>Hello from ESP8266 at ";
+        content += "<p>";
+        content += "</p><form method='get' action='setting'><label>SSID: </label><input name='ssid' length=32><input name='pass' length=64><input type='submit'></form>";
+        content += "</html>";
+        request->send(200, "text/html", content);  
+    });
+    setupServer->on("/show", [](AsyncWebServerRequest *request) {
+        debugPrint("Need to show: " + request->url());
+        if (request->hasParam("text")) {
+            showMessageSink(request->getParam("text")->value().c_str());
+        }
+        String content = "{ \"result\":\"OK\" }";
+        request->send(200, "application/javascript", content);  
+    });
+    setupServer->onNotFound([](AsyncWebServerRequest *request) {
+        request->send(404, "text/plain", "Not found: " + request->url());
+    });
+    setupServer->begin();
 }
 
 void loop() {
     webSocket->loop();
+
+    if (WiFi.status() != WL_CONNECTED) {
+        ESP.reset();
+    }
 }
 
-}
+} // namespace
 
 void debugPrint(const String& str) {
   if (sceleton::webSocket.get()) {

@@ -8,6 +8,7 @@
 #define NUM_MAX 4
 
 typedef const wchar_t* WSTR;
+typedef wchar_t* WSTR_MUTABLE;
 
 const WSTR weekdays[] = {
     L"Понедельник", 
@@ -107,6 +108,9 @@ class LcdScreen {
 
 private:
     uint8_t screen[NUM_MAX * 8];
+
+    int strStartAt = 0;
+    WSTR_MUTABLE _str = NULL;
 
 public:
     static const int secInUs = 1000000;
@@ -262,11 +266,60 @@ public:
         return w;        
     }
 
+    void showMessage(const char* utf8str) {
+        if (_str != NULL) {
+            free(_str);
+        }
+        int maxSize = strlen(utf8str)*sizeof(wchar_t);
+        _str = (WSTR_MUTABLE)malloc(maxSize);
+        memset(_str, 0, maxSize-1);
+        int srcLen = strlen(utf8str);
+        for (int i = 0, outIndex = 0; i < srcLen;) {
+            uint16_t sym = utf8str[i];
+            if ((sym & 0b10000000) == 0) {
+                // If an UCS fits 7 bits, its coded as 0xxxxxxx. This makes ASCII character represented by themselves
+                _str[outIndex++] = sym;
+                i++;
+            } else if (
+                (sym & 0b11100000) == 0b11000000 && 
+                ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000
+            ) {
+                // If an UCS fits 11 bits, it is coded as 110xxxxx 10xxxxxx
+                _str[outIndex++] = (((sym & 0b11111) << 6) & 0b11111000000) |
+                    ((uint16_t)utf8str[i+1] & 0b111111);
+                i+=2;
+            } else if (
+                (sym & 0b11110000) == 0x11100000 && 
+                ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000 &&
+                ((i + 2) < srcLen) && (utf8str[i+2] & 0b11000000) == 0b10000000
+            ) {
+                // If an UCS fits 16 bits, it is coded as 1110xxxx 10xxxxxx 10xxxxxx
+                _str[outIndex++] = 
+                    (((sym & 0b1111) << 12) & 0b1111000000000000) |
+                    ((((uint16_t)utf8str[i+1] & 0b111111) << 6) & 0b111111000000) |
+                    ((uint16_t)utf8str[i+2] & 0b111111);
+
+                i+=3;
+            } else {
+                i++;
+            }
+        }
+        strStartAt = millis();
+    }
+
     /**
      * micros is current time in microseconds
      */
     void showTime(uint32_t daysSince1970, uint32_t millisSince1200) {
-        if (millisSince1200 / 1000 % 30 < 10) {
+        if (_str != NULL) {
+            uint32_t showedTime = millis() - strStartAt;
+            printStr((showedTime / 50) % getStrWidth(_str), 0, _str);
+            if ((showedTime / 50) > getStrWidth(_str)) {
+                free(_str);
+                _str = NULL;
+            }
+            return;
+        } else if (millisSince1200 / 1000 % 30 < 10) {
             date::RTC rtc = {0};
             date::epoc2rtc(daysSince1970, rtc);
             wchar_t yearStr[10] = { 0 };
@@ -347,7 +400,7 @@ class MAX72xx {
     #define OP_DISPLAYTEST 15 ///< MAX72xx opcode for DISPLAY TEST
 
 public:
-    MAX72xx(const LcdScreen& _screen, 
+    MAX72xx(LcdScreen& _screen, 
             const int _CLK_PIN,
             const int _DATA_PIN,
             const int _CS_PIN) : 
@@ -400,12 +453,16 @@ public:
         digitalWrite(CS_PIN, LOW);
     }
 
+    void showMessage(const char* str) {
+        screen.showMessage(str);
+    }
+
   private:
     const int CLK_PIN;
     const int DATA_PIN;
     const int CS_PIN;
 
-    const LcdScreen& screen;
+    LcdScreen& screen;
 };
 
 //======================================================================================================

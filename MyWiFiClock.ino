@@ -32,6 +32,11 @@ void setup() {
 
   sceleton::setup();
 
+  sceleton::showMessageSink = [](const char* dd) {
+    // 
+    screenController.showMessage(dd);
+  };
+
   udp.begin(localPort);
 
   WiFi.hostByName(ntpServerName, timeServerIP); 
