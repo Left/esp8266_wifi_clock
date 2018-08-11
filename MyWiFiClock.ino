@@ -1,5 +1,11 @@
 #include "sceleton.h"
 
+#include <ESP8266HTTPClient.h>
+
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
+#include <IRutils.h>
+
 #include <WiFiUdp.h>
 #include <core_esp8266_waveform.h>
 
@@ -20,21 +26,144 @@ WiFiUDP udp;
 LcdScreen screen;
 MAX72xx screenController(screen, D5, D7, D6);
 
-#define BEEPER_PIN D2 // Beeper
+#define RECV_PIN D2
+// #define BEEPER_PIN D2 // Beeper
+
+IRrecv irrecv(RECV_PIN); // 
 
 int testCntr = 0;
 
+decode_results results;
+
+struct Key {
+  const char* bin;
+  const char* value;
+
+  Key(const char* bin_, const char* value_) : bin(bin_), value(value_) {}
+};
+
+struct Remote {
+  const char* name;
+  const std::vector<Key> keys;
+
+  Remote(const char* _name, const std::vector<Key>& _keys) : name(_name), keys(_keys) {
+  }
+}; 
+
+const Remote tvtuner( "tvtuner", 
+  std::vector<Key> {
+    Key("101000000000101010001000101000001000000000000010001010101", "n0"),
+    Key("1010000000001010100010001010001000000000000000001010101010", "n1"),
+    Key("1010000000001010100010001010001010001000000000000010001010101", "n2"),
+    Key("10100000000010101000100010100010100010100000000000100000101010", "n3"),
+    Key("10100000000010101000100010100010001000000000000010001010101010", "n4"),
+    Key("1010000000001010100010001010001000001000000000001010001010", "n5"),
+    Key("1010000000001010100010001010001000100010000000001000100010101", "n6"),
+    Key("10100000000010101000100010100000101000000000001000001010101", "n7"),
+    Key("1010000000001010100010001010000010001000000000100010001010", "n8"),
+    Key("1010000000001010100010001010000010000010000000100010100010101", "n9"),
+
+    Key("1010000000001010100010001010001010000000000000000010101", "tvfm"),
+    Key("10100000000010101000100010100010101000000000000000001010101", "source"),
+    Key("10100000000010101000100010100000001010100000001010000000101010", "scan"),
+    Key("10100000000010101000100010100000101010100000001000000000101010", "power"),
+    Key("10100000000010101000100010100010100000100000000000101000101", "recall"),
+    Key("1010000000001010100010001010000000000010000000101010100010101", "plus_100"),
+    Key("1010000000001010100010001010001010101010000000000000000010101", "channel_up"),
+    Key("1010000000001010100010001010001010100010000000000000100010101", "channel_down"),
+    Key("1010000000001010100010001010000010100010000000100000100010101", "volume_up"),
+    Key("1010000000001010100010001010000000100010000000101000100010101", "volume_down"),
+    Key("1010000000001010100010001010000000001010000000101010000010101", "mute"),
+    Key("1010000000001010100010001010001000000010000000001010100010101", "play"),
+    Key("1010000000001010100010001010000000001000000000101010001010101", "stop"),
+    Key("1010000000001010100010001010000000000000000000101010101010101", "record"),
+    Key("1010000000001010100010001010000010001010000000100010000010101", "freeze"),
+    Key("1010000000001010100010001010001000001010000000001010000010101", "zoom"),
+    Key("1010000000001010100010001010000000100000000000101000101010101", "rewind"),
+    Key("1010000000001010100010001010000010101000000000100000001010101", "function"),
+    Key("1010000000001010100010001010000000101000000000101000001010101", "wind"),
+    Key("1010000000001010100010001010001000101000000000001000001010101", "mts"),
+    Key("10100000000010101000100010100010001010100000000010000000101010", "reset"),
+    Key("10100000000010101000100010100010101010000000000000000010101010", "min")
+  }
+);
+
+const Remote canonCamera("CanonCamera",
+  std::vector<Key> {
+    Key("01010000000000010101000000010101010100000000000000000101010101010", "power"),
+    Key("01010000000000010101000000010101000000000101000001010101000001010", "photo"),
+    Key("01010000000000010101000000010101000001010100000001010000000101010", "volume_up"),
+    Key("01010000000000010101000000010101010001010100000000010000000101010", "volume_down"),
+    Key("01010000000000010101000000010101000101000000010001000001010100010", "func"),
+    Key("01010000000000010101000000010101010001000001000000010001010001010", "menu"),
+    Key("01010000000000010101000000010101000000010000010001010100010100010", "playlist"),
+    Key("01010000000000010101000000010101000000000001000001010101010001010", "up"),
+    Key("01010000000000010101000000010101010100000001000000000101010001010", "left"),
+    Key("01010000000000010101000000010101000100000001000001000101010001010", "right"),
+    Key("01010000000000010101000000010101010000000001000000010101010001010", "down"),
+    Key("01010000000000010101000000010101000001000001000001010001010001010", "set"),
+    Key("01010000000000010101000000010101000000000100010001010101000100010", "prev"),
+    Key("01010000000000010101000000010101000000000100000001010101000101010", "next"),
+    Key("01010000000000010101000000010101010100010000010000000100010100010", "rewind"),
+    Key("01010000000000010101000000010101010001010000010000010000010100010", "forward"),
+    Key("01010000000000010101000000010101010000000000000000010101010101010", "play"),
+    Key("01010000000000010101000000010101000001000000000001010001010101010", "pause"),
+    Key("01010000000000010101000000010101010101000100000000000001000101010", "stop"),
+    Key("01010000000000010101000000010101000101010000010001000000010100010", "disp"),
+  }
+);
+
+const Remote prologicTV("prologicTV",
+  std::vector<Key> {
+    Key("00000000000000000101010101010101010001010000010000010000010100010", "power"),
+    Key("00000000000000000101010101010101000101000100000001000001000101010", "mute"),
+    Key("00000000000000000101010101010101010000010000000000010100010101010", "n1"),
+    Key("00000000000000000101010101010101010001010100000000010000000101010", "n2"),
+    Key("00000000000000000101010101010101010101010100000000000000000101010", "n3"),
+    Key("00000000000000000101010101010101010001010000000000010000010101010", "n4"),
+    Key("00000000000000000101010101010101010000010100000000010100000101010", "n5"),
+    Key("00000000000000000101010101010101010100010100000000000100000101010", "n6"),
+    Key("00000000000000000101010101010101010000000100000000010101000101010", "n7"),
+    Key("00000000000000000101010101010101010001000100000000010001000101010", "n8"),
+    Key("00000000000000000101010101010101010101000100000000000001000101010", "n9"),
+    Key("00000000000000000101010101010101000100000100000001000101000101010", "n0"),
+    Key("00000000000000000101010101010101000000000000010001010101010100010", "fullscreen"),
+    Key("00000000000000000101010101010101000100010000000001000100010101010", "volume_down"),
+    Key("00000000000000000101010101010101000101010100000001000000000101010", "volume_up"),
+    Key("00000000000000000101010101010101010001000000000000010001010101010", "channel_up"),
+    Key("00000000000000000101010101010101000100000000000001000101010101010", "channel_down"),
+    Key("00000000000000000101010101010101000001000100000001010001000101010", "ent"),
+    Key("00000000000000000101010101010101000001010000010001010000010100010", "record"),
+    Key("00000000000000000101010101010101000001000100010001010001000100010", "av_source"),
+    Key("00000000000000000101010101010101000000000100000001010101000101010", "stop"),
+    Key("00000000000000000101010101010101000001010000000001010000010101010", "time_shift"),
+    Key("00000000000000000101010101010101000001010100000001010000000101010", "clear")
+  }
+);
+
+const Remote* remotes[] = { 
+  &tvtuner, 
+  &canonCamera, 
+  &prologicTV 
+};
+
+int lastCanonRemoteCmd = millis();
+int lastNumber = millis();
+
 void setup() {
   // Initialize comms hardware
-  pinMode(BEEPER_PIN, OUTPUT);
+  // pinMode(BEEPER_PIN, OUTPUT);
 
   screenController.setup();
+  screen.showMessage("Инициализация...");
+
+  irrecv.enableIRIn();  // Start the receiver
 
   sceleton::setup();
 
   sceleton::showMessageSink = [](const char* dd) {
     // 
-    screenController.showMessage(dd);
+    screen.showMessage(dd);
   };
 
   udp.begin(localPort);
@@ -54,6 +183,31 @@ uint64_t nowMs = 0;
 boolean sleeps = false;
 
 const int updateTimeEachSec = 600; // By default, update time each 600 seconds
+
+WiFiClient client;
+void sendHttp(const char* str) {
+  debugPrint("sendHttp!");
+  HTTPClient http;
+  http.begin(String("http://192.168.121.1:8000") + String(str));
+  // http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  http.POST("");
+  http.writeToStream(&Serial);
+  http.end();
+
+  // const char* host="192.168.121.1";
+  // String PostData = "";
+  // client.connect(host, 8000);
+  // client.print("POST "); client.print(str); client.println(" HTTP/1.1");
+  // client.println("Host: 192.168.121.1:8000");
+  // client.println("Origin: http://192.168.121.1:8000");
+  // client.println("Cache-Control: no-cache");
+  // client.println("Content-Type: application/x-www-form-urlencoded");
+  // client.println("User-Agent: WhoReallyCares");
+  // client.print("Content-Length: 0");
+  // client.println();
+  // client.println();
+  debugPrint("sendHttp - done!");
+}
 
 void loop() {
   if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInMs == 0 ? 5 : updateTimeEachSec)*1000))) {
@@ -77,8 +231,8 @@ void loop() {
       screenController.refreshAll();
     }
 
-    int m = (hours*100 + mins);
-    sleeps = m > 2330 || m < 540; // From 22:30 to 5:30 - do not show screen
+    // int m = (hours*100 + mins);
+    // sleeps = m > 2330 || m < 540; // From 22:30 to 5:30 - do not show screen
 
     if (sleeps) {
       if (!wasSleeping) {
@@ -138,6 +292,88 @@ void loop() {
     } else {
       debugPrint("INVALID TIME RECEIVED!");
     }
+  }
+
+  if (irrecv.decode(&results)) {
+        if (results.rawlen > 30) {
+      int decodedLen = 0;
+      char decoded[300] = {0};
+      String intervals("RAW: ");
+      int prevL = 0;
+      for (int i = 0; i < results.rawlen && i < sizeof(decoded); ++i) {
+        char c = -1;
+        int val = results.rawbuf[i];
+        
+        String valStr = String(val, DEC);
+        for (;valStr.length() < 4;) valStr = " " + valStr;
+        intervals += valStr;
+        intervals += " ";
+
+        if (val > 1000) {
+          continue;
+        } else if ((prevL + val) > 150 && (prevL + val) < 500) {
+          c = '0';
+        } else if ((prevL + val) > 600 && (prevL + val) < 900) {
+          c = '1';
+        } else {
+          // Serial.print(".");
+          prevL += val;
+          continue; // skip!
+        }
+        decoded[decodedLen++] = c;
+        prevL = 0;
+      }
+
+      String decodedStr(decoded);
+      const Remote* recognizedRemote = NULL;
+      const Key* recognized = NULL;
+      int kk = 0;
+      for (int r = 0; r < (sizeof(remotes)/sizeof(remotes[0])); ++r) {
+        const Remote& remote = *(remotes[r]);
+        for (int k = 0; k < remote.keys.size(); ++k) {
+          if (decodedStr.indexOf(remote.keys[k].bin) != -1) {
+            // Key pressed!
+            recognized = &(remote.keys[k]);
+            recognizedRemote = &remote;
+            kk = k;
+
+            String toSend = "{ \"remote\": \"" + 
+              String(recognizedRemote->name) + "\", \"key\": "  + String(remote.keys[k].value) + 
+              "\" }";
+
+            debugPrint(toSend);
+    
+            break;
+          }
+        }
+      }
+
+      if (recognized == NULL) {
+        debugPrint(decoded);
+      } else {
+        if (millis() - lastCanonRemoteCmd > 200) {
+          lastCanonRemoteCmd = millis();
+
+          String val(recognized->value);
+          if (val == "power") {
+            sleeps = !sleeps;
+            screenController.refreshAll();
+          } else if (val == "volume_up") {
+            sendHttp("/tablet/volup");
+          } else if (val == "volume_down") {
+            sendHttp("/tablet/voldown");
+          } else if (val.length() == 2 && val[0] == 'n') {
+            // Numbers
+            screen
+            lastNumber = millis();
+          }
+
+          debugPrint(val);
+        }
+      }
+    }
+   
+    irrecv.resume();  // Receive the next value
   }
 }
 

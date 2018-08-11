@@ -47,8 +47,6 @@ void setup() {
     String wifiPwd = fileToString(wifiPwdName);
 
     if (wifiName.length() > 0 && wifiPwd.length() > 0) {
-        Serial.println(wifiName);
-        Serial.println(wifiPwd);
         WiFi.begin(wifiName.c_str(), wifiPwd.c_str());
         WiFi.waitForConnectResult();
     }
@@ -155,11 +153,17 @@ void setup() {
     setupServer->begin();
 }
 
+int lastConnected = millis();
+
 void loop() {
     webSocket->loop();
 
-    if (WiFi.status() != WL_CONNECTED) {
-        ESP.reset();
+    if (millis() % 1000 == 0 && WiFi.status() != WL_CONNECTED) {
+        if (millis() - lastConnected > 15000) {
+            ESP.reset();
+        }
+    } else {
+        lastConnected = millis();
     }
 }
 

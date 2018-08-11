@@ -35,32 +35,6 @@ const WSTR monthes[] = {
     L"декабря"
 };
 
-const unsigned char midNumbers[][8] = {
-  { 0x38, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x38 }, // 0
-  { 0x10, 0x30, 0x50, 0x10, 0x10, 0x10, 0x10, 0x7c }, // 1
-  { 0x38, 0x44, 0x04, 0x08, 0x10, 0x20, 0x40, 0x7c }, // 2
-  { 0x38, 0x44, 0x04, 0x18, 0x04, 0x04, 0x44, 0x38 }, // 3
-  { 0x0c, 0x14, 0x24, 0x44, 0x7c, 0x04, 0x04, 0x04 }, // 4
-  { 0x7c, 0x40, 0x40, 0x78, 0x04, 0x04, 0x44, 0x38 }, // 5
-  { 0x3c, 0x40, 0x40, 0x78, 0x44, 0x44, 0x44, 0x38 }, // 6
-  { 0x7c, 0x44, 0x04, 0x08, 0x10, 0x20, 0x20, 0x20 }, // 7
-  { 0x38, 0x44, 0x44, 0x38, 0x44, 0x44, 0x44, 0x38 }, // 8
-  { 0x38, 0x44, 0x44, 0x44, 0x3c, 0x04, 0x04, 0x38 }, // 9
-};
-
-const unsigned char smallNumbers[][8] = {
-  { 0x00, 0x00, 0x00, 0xe0, 0xa0, 0xa0, 0xa0, 0xe0 }, // 0
-  { 0x00, 0x00, 0x00, 0x40, 0xc0, 0x40, 0x40, 0xe0 }, // 1
-  { 0x00, 0x00, 0x00, 0xe0, 0x20, 0xe0, 0x80, 0xe0 }, // 2
-  { 0x00, 0x00, 0x00, 0xe0, 0x20, 0xe0, 0x20, 0xe0 }, // 3
-  { 0x00, 0x00, 0x00, 0xa0, 0xa0, 0xe0, 0x20, 0x20 }, // 4
-  { 0x00, 0x00, 0x00, 0xe0, 0x80, 0xe0, 0x20, 0xe0 }, // 5
-  { 0x00, 0x00, 0x00, 0xe0, 0x80, 0xe0, 0xa0, 0xe0 }, // 6
-  { 0x00, 0x00, 0x00, 0xe0, 0x20, 0x20, 0x40, 0x40 }, // 7
-  { 0x00, 0x00, 0x00, 0xe0, 0xa0, 0xe0, 0xa0, 0xe0 }, // 8
-  { 0x00, 0x00, 0x00, 0xe0, 0xa0, 0xe0, 0x20, 0xe0 }, // 9
-};
-
 class Figure {
 public:
     virtual void pixels(std::function<void(int, int)> acceptor) const = 0;
@@ -109,6 +83,8 @@ class LcdScreen {
 private:
     uint8_t screen[NUM_MAX * 8];
 
+
+    uint32_t nextShowDateInMs = millis() + 5000;
     int strStartAt = 0;
     WSTR_MUTABLE _str = NULL;
 
@@ -200,6 +176,10 @@ public:
         int sym1251 = symbol & 0xffff;
         if (sym1251 >= 0x410 && sym1251 < 0x450) {
             sym1251 = sym1251 - 0x410 + 0xa0;
+        } else if (sym1251 == 0x401) {
+            sym1251 = 0x100 - 0x20; // Ё
+        } else if (sym1251 == 0x451) {
+            sym1251 = 0x101 - 0x20; // ё
         } else {
             sym1251 = sym1251 - 0x20;
         }
@@ -271,8 +251,8 @@ public:
             free(_str);
         }
         int maxSize = strlen(utf8str)*sizeof(wchar_t);
-        _str = (WSTR_MUTABLE)malloc(maxSize);
-        memset(_str, 0, maxSize-1);
+        _str = (WSTR_MUTABLE)malloc(maxSize + 2);
+        memset(_str, 0, maxSize + 1);
         int srcLen = strlen(utf8str);
         for (int i = 0, outIndex = 0; i < srcLen;) {
             uint16_t sym = utf8str[i];
@@ -313,13 +293,16 @@ public:
     void showTime(uint32_t daysSince1970, uint32_t millisSince1200) {
         if (_str != NULL) {
             uint32_t showedTime = millis() - strStartAt;
-            printStr((showedTime / 50) % getStrWidth(_str), 0, _str);
-            if ((showedTime / 50) > getStrWidth(_str)) {
+            int32_t extraTime = (showedTime / 50) - getStrWidth(_str);
+            printStr(extraTime < 0 ? ((showedTime / 50) % getStrWidth(_str)) : getStrWidth(_str), 0, _str);
+            if (extraTime > 30) {
                 free(_str);
                 _str = NULL;
             }
             return;
-        } else if (millisSince1200 / 1000 % 30 < 10) {
+        } 
+
+        if (millisSince1200 / 1000 % 60 > 50) {
             date::RTC rtc = {0};
             date::epoc2rtc(daysSince1970, rtc);
             wchar_t yearStr[10] = { 0 };
@@ -327,15 +310,22 @@ public:
             wchar_t dayStr[10] = { 0 };
             swprintf(dayStr, __countof(dayStr), L"%d", rtc.day+1);
             const WSTR ss[] = {
-                L"  ", 
                 weekdays[rtc.dow],
                 L", ",
                 dayStr,
                 L" ",
-                monthes[rtc.month],
-                L"   "
+                monthes[rtc.month]
             };
-            printStr((millis() / 50) % getStrWidth(ss, __countof(ss)), 0, ss, __countof(ss));
+            _str = (WSTR_MUTABLE)malloc(200);
+            strStartAt = millis();
+            WSTR_MUTABLE s = _str;
+            for (int i = 0; i < __countof(ss); ++i) {
+                for (int t = 0; ss[i][t] != 0; ++t) {
+                    *s = ss[i][t];
+                    s++;
+                    *s = 0;
+                }
+            }
             return;
         }
         
@@ -451,10 +441,6 @@ public:
             digitalWrite(CS_PIN, HIGH);
         }
         digitalWrite(CS_PIN, LOW);
-    }
-
-    void showMessage(const char* str) {
-        screen.showMessage(str);
     }
 
   private:

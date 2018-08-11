@@ -12,6 +12,7 @@ int main(int argc, char const *argv[]) {
     putp(tigetstr((char *)"clear"));
 
     LcdScreen screen;
+    screen.showMessage("ЁЁЁёёёЁЁЁёёё!");
 
     for (int ii = 0; ii < 16000; ++ii) {
         // Move cursor to top left
