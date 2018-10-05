@@ -87,6 +87,7 @@ private:
     uint32_t nextShowDateInMs = millis() + 5000;
     int strStartAt = 0;
     WSTR_MUTABLE _str = NULL;
+    uint32_t _scrollSpeed = 40;
 
 public:
     static const int secInUs = 1000000;
@@ -293,8 +294,9 @@ public:
     void showTime(uint32_t daysSince1970, uint32_t millisSince1200) {
         if (_str != NULL) {
             uint32_t showedTime = millis() - strStartAt;
-            int32_t extraTime = (showedTime / 50) - getStrWidth(_str);
-            printStr(extraTime < 0 ? ((showedTime / 50) % getStrWidth(_str)) : getStrWidth(_str), 0, _str);
+            int32_t strW = getStrWidth(_str);
+            int32_t extraTime = (showedTime / _scrollSpeed) - strW;
+            printStr(extraTime < 0 ? ((showedTime / _scrollSpeed) % strW) : strW, 0, _str);
             if (extraTime > 30) {
                 free(_str);
                 _str = NULL;

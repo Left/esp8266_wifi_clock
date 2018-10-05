@@ -20,6 +20,11 @@ const char* ntpServerName = "time.nist.gov";
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
 byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
 
+const uint64_t dayInMs = 24*60*60*1000;
+
+void updateTime();
+unsigned long sendNTPpacket(IPAddress& address);
+
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udp;
 
@@ -191,7 +196,7 @@ void sendHttp(const char* str) {
   http.begin(String("http://192.168.121.1:8000") + String(str));
   // http.addHeader("Content-Type", "application/x-www-form-urlencoded");
   http.POST("");
-  http.writeToStream(&Serial);
+  // http.writeToStream(&Serial);
   http.end();
 
   // const char* host="192.168.121.1";
@@ -225,7 +230,6 @@ void loop() {
   if (timeRetreivedInMs) {
     updateTime();
     if (!sleeps) {
-      uint64_t dayInMs = 24*60*60*1000;
       screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
 
       screenController.refreshAll();
@@ -337,12 +341,15 @@ void loop() {
             recognizedRemote = &remote;
             kk = k;
 
-            String toSend = "{ \"remote\": \"" + 
-              String(recognizedRemote->name) + "\", \"key\": "  + String(remote.keys[k].value) + 
-              "\" }";
+            String toSend = String("{ \"type\": \"ir_key\", ") + 
+              "\"remote\": \"" + String(recognizedRemote->name) + "\", " + 
+              "\"key\": \""  + String(remote.keys[k].value)  + "\", " +  
+              "\"day\": "  + String((uint32_t)(nowMs / dayInMs), DEC)  + ", " +  
+              "\"timems\": "  + String((uint32_t)(nowMs % dayInMs), DEC)  + " " +  
+              "}";
 
-            debugPrint(toSend);
-    
+            sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+
             break;
           }
         }
@@ -355,20 +362,25 @@ void loop() {
           lastCanonRemoteCmd = millis();
 
           String val(recognized->value);
-          if (val == "power") {
-            sleeps = !sleeps;
-            screenController.refreshAll();
-          } else if (val == "volume_up") {
-            sendHttp("/tablet/volup");
-          } else if (val == "volume_down") {
-            sendHttp("/tablet/voldown");
-          } else if (val.length() == 2 && val[0] == 'n') {
-            // Numbers
-            screen
-            lastNumber = millis();
-          }
+          // sendHttp(String("/ir/") + val + "/" + millis());
 
-          debugPrint(val);
+          // if (val == "power") {
+          //   sleeps = !sleeps;
+          //   screenController.refreshAll();
+          // } else if (val == "volume_up") {
+          //   sendHttp("/tablet/volup");
+          // } else if (val == "volume_down") {
+          //   sendHttp("/tablet/voldown");
+          // } else if (val.length() == 2 && val[0] == 'n') {
+          //   // Numbers
+          //   lastNumber = millis();
+          // }
+
+          // String toSend;
+          // toSend = "{ \"type\": \"ir\", \"val\": \"" + val + "\", \"remote\":\"" +  + "\" }";
+          // sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+
+          // debugPrint(val);
         }
       }
     }

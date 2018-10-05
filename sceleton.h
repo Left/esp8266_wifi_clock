@@ -95,11 +95,13 @@ void setup() {
             }
             case WStype_TEXT: {
                 Serial.printf("[%u] get Text: %s\n", num, payload);
-                DynamicJsonBuffer jsonBuffer;
+                DynamicJsonDocument jsonBuffer;
 
-                JsonObject &root = jsonBuffer.parseObject(payload);
+                DeserializationError error = deserializeJson(jsonBuffer, payload);
 
-                if (!root.success()) {
+                const JsonObject &root = jsonBuffer.as<JsonObject>();
+
+                if (error) {
                     Serial.println("parseObject() failed");
                     webSocket->sendTXT(num, "{ \"errorMsg\":\"Failed to parse JSON\" }");
                     return;
