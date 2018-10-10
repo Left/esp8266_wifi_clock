@@ -155,41 +155,6 @@ const Remote* remotes[] = {
 int lastCanonRemoteCmd = millis();
 int lastNumber = millis();
 
-void setup() {
-  // Initialize comms hardware
-  // pinMode(BEEPER_PIN, OUTPUT);
-
-  screenController.setup();
-  screen.showMessage("Инициализация...");
-
-  irrecv.enableIRIn();  // Start the receiver
-
-  sceleton::setup();
-
-  sceleton::showMessageSink = [](const char* dd) {
-    // 
-    screen.showMessage(dd);
-  };
-
-  udp.begin(localPort);
-
-  WiFi.hostByName(ntpServerName, timeServerIP); 
-}
-
-unsigned long oldMicros = micros();
-
-uint32_t timeRetreivedInMs = 0;
-uint32_t initialUnixTime = 0;
-uint32_t timeRequestedAt = 0;
-
-uint16_t hours = 0;
-uint16_t mins = 0;
-uint64_t nowMs = 0;
-boolean sleeps = false;
-
-const int updateTimeEachSec = 600; // By default, update time each 600 seconds
-
-WiFiClient client;
 void sendHttp(const char* str) {
   debugPrint("sendHttp!");
   HTTPClient http;
@@ -213,6 +178,44 @@ void sendHttp(const char* str) {
   // client.println();
   debugPrint("sendHttp - done!");
 }
+
+void setup() {
+  // Initialize comms hardware
+  // pinMode(BEEPER_PIN, OUTPUT);
+
+  screenController.setup();
+  screen.showMessage("Инициализация...");
+
+  irrecv.enableIRIn();  // Start the receiver
+
+  sceleton::setup();
+
+  sceleton::showMessageSink = [](const char* dd) {
+    // 
+    screen.showMessage(dd);
+  };
+
+  udp.begin(localPort);
+
+  WiFi.hostByName(ntpServerName, timeServerIP);
+
+  // sendHttp("/clock_init");
+}
+
+unsigned long oldMicros = micros();
+
+uint32_t timeRetreivedInMs = 0;
+uint32_t initialUnixTime = 0;
+uint32_t timeRequestedAt = 0;
+
+uint16_t hours = 0;
+uint16_t mins = 0;
+uint64_t nowMs = 0;
+boolean sleeps = false;
+
+const int updateTimeEachSec = 600; // By default, update time each 600 seconds
+
+WiFiClient client;
 
 void loop() {
   if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInMs == 0 ? 5 : updateTimeEachSec)*1000))) {

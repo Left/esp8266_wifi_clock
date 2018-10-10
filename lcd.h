@@ -87,7 +87,9 @@ private:
     uint32_t nextShowDateInMs = millis() + 5000;
     int strStartAt = 0;
     WSTR_MUTABLE _str = NULL;
-    uint32_t _scrollSpeed = 40;
+    const uint32_t _scrollSpeed = 35;
+    uint32_t _blinkStart = 0;
+    const uint32_t _blinkTime = 30;
 
 public:
     static const int secInUs = 1000000;

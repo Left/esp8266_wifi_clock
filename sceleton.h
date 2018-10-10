@@ -114,10 +114,15 @@ void setup() {
 
                     webSocket->sendTXT(num, "{ \"result\":\"OK, will reboot\" }");
                     ESP.reset();
+                } if (type == "ping") {
+                    String res = "{ \"result\":\"OK\", \"pingid\":\"";
+                    res += (const char*)(root["pingid"]);
+                    res += "\" }";
+                    webSocket->sendTXT(num, res);
+                } else if (type == "show") {
+                    showMessageSink(root["text"]);
                 }
 
-                // send data to all connected clients
-                // webSocket.broadcastTXT("message here");
                 break;
             }
             case WStype_BIN: {
@@ -140,14 +145,6 @@ void setup() {
         content += "</p><form method='get' action='setting'><label>SSID: </label><input name='ssid' length=32><input name='pass' length=64><input type='submit'></form>";
         content += "</html>";
         request->send(200, "text/html", content);  
-    });
-    setupServer->on("/show", [](AsyncWebServerRequest *request) {
-        debugPrint("Need to show: " + request->url());
-        if (request->hasParam("text")) {
-            showMessageSink(request->getParam("text")->value().c_str());
-        }
-        String content = "{ \"result\":\"OK\" }";
-        request->send(200, "application/javascript", content);  
     });
     setupServer->onNotFound([](AsyncWebServerRequest *request) {
         request->send(404, "text/plain", "Not found: " + request->url());
