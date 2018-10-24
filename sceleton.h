@@ -74,8 +74,7 @@ void setup() {
         WiFi.softAP(wifiAPName.c_str(), wifiPwd.c_str());
 
         IPAddress accessIP = WiFi.softAPIP();
-        // Serial.print("ESP AccessPoint IP address: ");
-        // Serial.println(accessIP);
+        // Serial.println("ESP AccessPoint IP address: " + accessIP.toString());
     }
 
     webSocket.reset(new WebSocketsServer(8081, "*"));

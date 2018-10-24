@@ -158,12 +158,19 @@ int lastNumber = millis();
 boolean invertRelayState = false;
 int currRelayState = 0; // All relays are off by default
 
-SoftwareSerial relay(D3, D4);
+SoftwareSerial relay(D1, D0); // RX, TX
 
 void setup() {
   // Initialize comms hardware
   // pinMode(BEEPER_PIN, OUTPUT);
   relay.begin(9600);
+
+  delay(100);
+  relay.write(0x50);
+  delay(100);
+  relay.write(0x51);
+  delay(100);
+  relay.write('0' | (invertRelayState ? ~currRelayState : currRelayState));
 
   screenController.setup();
   screen.showMessage("Инициализация...");
@@ -173,13 +180,15 @@ void setup() {
   sceleton::setup();
 
   sceleton::switchRelaySink = [](int id, bool val) {
+    // Serial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
+
     int bit = 1 << id;
     currRelayState = currRelayState & ~bit;
     if (val) {
       currRelayState = currRelayState | bit;
     }
     
-    relay.write(invertRelayState ? ~currRelayState : currRelayState);
+    relay.write('0' | (invertRelayState ? ~currRelayState : currRelayState));
   };
 
   sceleton::showMessageSink = [](const char* dd) {
@@ -193,11 +202,6 @@ void setup() {
 
   // sendHttp("/clock_init");
 
-  relay.write(0x50);
-  delay(100);
-  relay.write(0x51);
-  delay(100);
-  relay.write(invertRelayState ? ~currRelayState : currRelayState);
 }
 
 unsigned long oldMicros = micros();
