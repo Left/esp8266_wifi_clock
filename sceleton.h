@@ -11,7 +11,7 @@ void debugPrint(const String& str);
 namespace sceleton {
 
 std::function<void(const char*)> showMessageSink = [](const char* s) {}; // Do nothing by default
-
+std::function<void(int, bool)> switchRelaySink = [](int, bool) {}; // Do nothing by default
 void stringToFile(const String& fileName, const String& value) {
     File f = SPIFFS.open(fileName.c_str(), "w");
     f.write((uint8_t*)value.c_str(), value.length());
@@ -53,7 +53,7 @@ void setup() {
 
     if (WiFi.status() == WL_CONNECTED) {
         IPAddress ip = WiFi.localIP();
-        Serial.println("Connected to WiFi " + ip.toString());
+        // Serial.println("Connected to WiFi " + ip.toString());
     } else {
         WiFi.mode(WIFI_STA);
         WiFi.disconnect();
@@ -74,38 +74,38 @@ void setup() {
         WiFi.softAP(wifiAPName.c_str(), wifiPwd.c_str());
 
         IPAddress accessIP = WiFi.softAPIP();
-        Serial.print("ESP AccessPoint IP address: ");
-        Serial.println(accessIP);
+        // Serial.print("ESP AccessPoint IP address: ");
+        // Serial.println(accessIP);
     }
 
     webSocket.reset(new WebSocketsServer(8081, "*"));
     webSocket->onEvent([&](uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
         switch (type) {
             case WStype_DISCONNECTED: {
-                Serial.printf("[%u] Disconnected!\n", num);
+                // Serial.printf("[%u] Disconnected!\n", num);
                 break;
             }
             case WStype_CONNECTED: {
                 IPAddress ip = webSocket->remoteIP(num);
-                Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+                // Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
 
                 // send message to client
                 debugPrint("Connected client " + String(num, DEC));
                 break;
             }
             case WStype_TEXT: {
-                Serial.printf("[%u] get Text: %s\n", num, payload);
+                // Serial.printf("[%u] get Text: %s\n", num, payload);
                 DynamicJsonDocument jsonBuffer;
 
                 DeserializationError error = deserializeJson(jsonBuffer, payload);
 
-                const JsonObject &root = jsonBuffer.as<JsonObject>();
-
                 if (error) {
-                    Serial.println("parseObject() failed");
+                    // Serial.println("parseObject() failed");
                     webSocket->sendTXT(num, "{ \"errorMsg\":\"Failed to parse JSON\" }");
                     return;
                 }
+
+                const JsonObject &root = jsonBuffer.as<JsonObject>();
 
                 String type = root[typeKey];
                 if (type == "wificredentials") {
@@ -119,6 +119,11 @@ void setup() {
                     res += (const char*)(root["pingid"]);
                     res += "\" }";
                     webSocket->sendTXT(num, res);
+                } if (type == "switch") {
+                    // Serial.println("switch!");
+                    webSocket->sendTXT(num, "{ \"result\":\"Doing\" }");
+                    switchRelaySink(atoi(root["id"]), root["on"] == "true");
+                    webSocket->sendTXT(num, "{ \"result\":\"OK\" }");
                 } else if (type == "show") {
                     showMessageSink(root["text"]);
                 }

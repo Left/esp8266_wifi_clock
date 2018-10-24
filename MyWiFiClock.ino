@@ -8,6 +8,7 @@
 
 #include <WiFiUdp.h>
 #include <core_esp8266_waveform.h>
+#include <SoftwareSerial.h>
 
 #include "worklogic.h"
 #include "lcd.h"
@@ -154,34 +155,15 @@ const Remote* remotes[] = {
 
 int lastCanonRemoteCmd = millis();
 int lastNumber = millis();
+boolean invertRelayState = false;
+int currRelayState = 0; // All relays are off by default
 
-void sendHttp(const char* str) {
-  debugPrint("sendHttp!");
-  HTTPClient http;
-  http.begin(String("http://192.168.121.1:8000") + String(str));
-  // http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  http.POST("");
-  // http.writeToStream(&Serial);
-  http.end();
-
-  // const char* host="192.168.121.1";
-  // String PostData = "";
-  // client.connect(host, 8000);
-  // client.print("POST "); client.print(str); client.println(" HTTP/1.1");
-  // client.println("Host: 192.168.121.1:8000");
-  // client.println("Origin: http://192.168.121.1:8000");
-  // client.println("Cache-Control: no-cache");
-  // client.println("Content-Type: application/x-www-form-urlencoded");
-  // client.println("User-Agent: WhoReallyCares");
-  // client.print("Content-Length: 0");
-  // client.println();
-  // client.println();
-  debugPrint("sendHttp - done!");
-}
+SoftwareSerial relay(D3, D4);
 
 void setup() {
   // Initialize comms hardware
   // pinMode(BEEPER_PIN, OUTPUT);
+  relay.begin(9600);
 
   screenController.setup();
   screen.showMessage("Инициализация...");
@@ -189,6 +171,16 @@ void setup() {
   irrecv.enableIRIn();  // Start the receiver
 
   sceleton::setup();
+
+  sceleton::switchRelaySink = [](int id, bool val) {
+    int bit = 1 << id;
+    currRelayState = currRelayState & ~bit;
+    if (val) {
+      currRelayState = currRelayState | bit;
+    }
+    
+    relay.write(invertRelayState ? ~currRelayState : currRelayState);
+  };
 
   sceleton::showMessageSink = [](const char* dd) {
     // 
@@ -200,6 +192,12 @@ void setup() {
   WiFi.hostByName(ntpServerName, timeServerIP);
 
   // sendHttp("/clock_init");
+
+  relay.write(0x50);
+  delay(100);
+  relay.write(0x51);
+  delay(100);
+  relay.write(invertRelayState ? ~currRelayState : currRelayState);
 }
 
 unsigned long oldMicros = micros();
@@ -365,25 +363,7 @@ void loop() {
           lastCanonRemoteCmd = millis();
 
           String val(recognized->value);
-          // sendHttp(String("/ir/") + val + "/" + millis());
 
-          // if (val == "power") {
-          //   sleeps = !sleeps;
-          //   screenController.refreshAll();
-          // } else if (val == "volume_up") {
-          //   sendHttp("/tablet/volup");
-          // } else if (val == "volume_down") {
-          //   sendHttp("/tablet/voldown");
-          // } else if (val.length() == 2 && val[0] == 'n') {
-          //   // Numbers
-          //   lastNumber = millis();
-          // }
-
-          // String toSend;
-          // toSend = "{ \"type\": \"ir\", \"val\": \"" + val + "\", \"remote\":\"" +  + "\" }";
-          // sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
-
-          // debugPrint(val);
         }
       }
     }
