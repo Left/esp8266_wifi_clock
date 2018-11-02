@@ -32,10 +32,9 @@ WiFiUDP udp;
 LcdScreen screen;
 MAX72xx screenController(screen, D5, D7, D6);
 
-#define RECV_PIN D2
 // #define BEEPER_PIN D2 // Beeper
 
-IRrecv irrecv(RECV_PIN); // 
+IRrecv irrecv(D2); // 
 
 int testCntr = 0;
 
@@ -147,10 +146,41 @@ const Remote prologicTV("prologicTV",
   }
 );
 
+const Remote transcendPhotoFrame("transcendPhotoFrame",
+  std::vector<Key> {
+    Key("00000000000101000001010101000001000100000000000001000101010101010", "power"),
+    Key("00000000000101000001010101000001010101000100000000000001000101010", "home"),
+    Key("00000000000101000001010101000001000001000100010001010001000100010", "photo"),
+    Key("00000000000101000001010101000001010001000100010000010001000100010", "music"),
+    Key("00000000000101000001010101000001000101000100010001000001000100010", "calendar"),
+    Key("00000000000101000001010101000001010000000000000000010101010101010", "settings"),
+    Key("00000000000101000001010101000001000101000000000001000001010101010", "slideshow"),
+    Key("00000000000101000001010101000001010101000100010000000001000100010", "option"),
+    Key("00000000000101000001010101000001010100010100000000000100000101010", "exit"),
+    Key("00000000000101000001010101000001000001000000000001010001010101010", "rotate"),
+    Key("00000000000101000001010101000001000100010100000001000100000101010", "zoom"),
+    Key("00000000000101000001010101000001010100010100010000000100000100010", "ok"),
+    Key("00000000000101000001010101000001000000010100000001010100000101010", "left"),
+    Key("00000000000101000001010101000001010000010100000000010100000101010", "right"),
+    Key("00000000000101000001010101000001000000010100010001010100000100010", "up"),
+    Key("00000000000101000001010101000001000100010100010001000100000100010", "down"),
+    Key("00000000000101000001010101000001010001000000000000010001010101010", "volume_up"),
+    Key("00000000000101000001010101000001000101010100000001000000000101010", "volume_down"),
+    Key("00000000000101000001010101000001000001010100000001010000000101010", "prev"),
+    Key("00000000000101000001010101000001010001010100000000010000000101010", "next"),
+    Key("00000000000101000001010101000001000101010000000001000000010101010", "play"),
+    Key("00000000000101000001010101000001010101010100000000000000000101010", "mode"),
+    Key("00000000000101000001010101000001010001010000000000010000010101010", "stop"),
+    Key("00000000000101000001010101000001000100000100000001000101000101010", "mute")
+  }
+);
+
+
 const Remote* remotes[] = { 
   &tvtuner, 
   &canonCamera, 
-  &prologicTV 
+  &prologicTV,
+  &transcendPhotoFrame
 };
 
 int lastCanonRemoteCmd = millis();
@@ -158,20 +188,12 @@ int lastNumber = millis();
 boolean invertRelayState = false;
 int currRelayState = 0; // All relays are off by default
 
+boolean relayIsInitialized = false;
 SoftwareSerial relay(D1, D0); // RX, TX
 
 void setup() {
   // Initialize comms hardware
   // pinMode(BEEPER_PIN, OUTPUT);
-  relay.begin(9600);
-
-  delay(100);
-  relay.write(0x50);
-  delay(100);
-  relay.write(0x51);
-  delay(100);
-  relay.write('0' | (invertRelayState ? ~currRelayState : currRelayState));
-
   screenController.setup();
   screen.showMessage("Инициализация...");
 
@@ -181,14 +203,25 @@ void setup() {
 
   sceleton::switchRelaySink = [](int id, bool val) {
     // Serial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
+    debugPrint(String("switchRelaySink: ") + (val ? "true" : "false"));
 
     int bit = 1 << id;
     currRelayState = currRelayState & ~bit;
     if (val) {
       currRelayState = currRelayState | bit;
     }
+
+    if (!relayIsInitialized) {
+      relay.begin(9600);
+      delay(100);
+      relay.write(0x50);
+      delay(100);
+      relay.write(0x51);
+      delay(100);
+      relayIsInitialized = true;
+    }
     
-    relay.write('0' | (invertRelayState ? ~currRelayState : currRelayState));
+    relay.write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
   };
 
   sceleton::showMessageSink = [](const char* dd) {
@@ -221,7 +254,7 @@ WiFiClient client;
 
 void loop() {
   if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInMs == 0 ? 5 : updateTimeEachSec)*1000))) {
-    debugPrint("Requesting time");
+    // debugPrint("Requesting time");
     timeRequestedAt = millis();
     sendNTPpacket(timeServerIP); // send an NTP packet to a time server
   }
@@ -304,7 +337,7 @@ void loop() {
   }
 
   if (irrecv.decode(&results)) {
-        if (results.rawlen > 30) {
+    if (results.rawlen > 30) {
       int decodedLen = 0;
       char decoded[300] = {0};
       String intervals("RAW: ");
@@ -315,8 +348,8 @@ void loop() {
         
         String valStr = String(val, DEC);
         for (;valStr.length() < 4;) valStr = " " + valStr;
-        intervals += valStr;
-        intervals += " ";
+        // intervals += valStr;
+        // intervals += " ";
 
         if (val > 1000) {
           continue;
@@ -349,8 +382,7 @@ void loop() {
             String toSend = String("{ \"type\": \"ir_key\", ") + 
               "\"remote\": \"" + String(recognizedRemote->name) + "\", " + 
               "\"key\": \""  + String(remote.keys[k].value)  + "\", " +  
-              "\"day\": "  + String((uint32_t)(nowMs / dayInMs), DEC)  + ", " +  
-              "\"timems\": "  + String((uint32_t)(nowMs % dayInMs), DEC)  + " " +  
+              "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
               "}";
 
             sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
@@ -362,6 +394,7 @@ void loop() {
 
       if (recognized == NULL) {
         debugPrint(decoded);
+        debugPrint(intervals);
       } else {
         if (millis() - lastCanonRemoteCmd > 200) {
           lastCanonRemoteCmd = millis();
@@ -371,9 +404,11 @@ void loop() {
         }
       }
     }
-   
+
     irrecv.resume();  // Receive the next value
   }
+
+  // Serial.println(String(millis(), DEC));
 }
 
 void updateTime() {
@@ -391,24 +426,26 @@ void updateTime() {
 
 // send an NTP request to the time server at the given address
 unsigned long sendNTPpacket(IPAddress& address) {
-  debugPrint("sending NTP packet...");
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12]  = 49;
-  packetBuffer[13]  = 0x4E;
-  packetBuffer[14]  = 49;
-  packetBuffer[15]  = 52;
+  if (sceleton::ntpTime._value == "true") {
+    debugPrint("sending NTP packet...");
+    // set all bytes in the buffer to 0
+    memset(packetBuffer, 0, NTP_PACKET_SIZE);
+    // Initialize values needed to form NTP request
+    // (see URL above for details on the packets)
+    packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+    packetBuffer[1] = 0;     // Stratum, or type of clock
+    packetBuffer[2] = 6;     // Polling Interval
+    packetBuffer[3] = 0xEC;  // Peer Clock Precision
+    // 8 bytes of zero for Root Delay & Root Dispersion
+    packetBuffer[12]  = 49;
+    packetBuffer[13]  = 0x4E;
+    packetBuffer[14]  = 49;
+    packetBuffer[15]  = 52;
 
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  udp.beginPacket(address, 123); //NTP requests are to port 123
-  udp.write(packetBuffer, NTP_PACKET_SIZE);
-  udp.endPacket();
+    // all NTP fields have been given values, now
+    // you can send a packet requesting a timestamp:
+    udp.beginPacket(address, 123); //NTP requests are to port 123
+    udp.write(packetBuffer, NTP_PACKET_SIZE);
+    udp.endPacket();
+  }
 }
