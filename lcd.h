@@ -253,11 +253,11 @@ public:
         if (_str != NULL) {
             free(_str);
         }
-        int maxSize = strlen(utf8str)*sizeof(wchar_t);
+        int maxSize = strlen(utf8str)*2;
         _str = (WSTR_MUTABLE)malloc(maxSize + 2);
         memset(_str, 0, maxSize + 1);
         int srcLen = strlen(utf8str);
-        for (int i = 0, outIndex = 0; i < srcLen;) {
+        for (int i = 0, outIndex = 0; utf8str[i] != 0;) {
             uint16_t sym = utf8str[i];
             if ((sym & 0b10000000) == 0) {
                 // If an UCS fits 7 bits, its coded as 0xxxxxxx. This makes ASCII character represented by themselves

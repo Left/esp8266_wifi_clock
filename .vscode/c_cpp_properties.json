@@ -3,12 +3,16 @@
         {
             "name": "Mac",
             "includePath": [
-                "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.1/cores/esp8266"
+                "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/cores/esp8266",
+                "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ArduinoOTA",
+                "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ESP8266httpUpdate"
             ],
             "browse": {
                 "limitSymbolsToIncludedHeaders": false,
                 "path": [
-                    "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.1/cores/esp8266"
+                    "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/cores/esp8266",
+                    "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ArduinoOTA",
+                    "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ESP8266httpUpdate"
                 ]
             },
             "macFrameworkPath": [

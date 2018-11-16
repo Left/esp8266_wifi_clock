@@ -35,7 +35,7 @@ String fileToString(const String& fileName) {
 
 const String typeKey("type");
 
-const char* firmwareVersion = "00.11";
+const char* firmwareVersion = "00.12";
 
 std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsServer> webSocket;
@@ -76,6 +76,7 @@ void setup() {
     }
 
     if (wifiName._value.length() > 0 && wifiPwd._value.length() > 0) {
+        WiFi.mode(WIFI_STA);
         WiFi.begin(wifiName._value.c_str(), wifiPwd._value.c_str());
         WiFi.waitForConnectResult();
     }
