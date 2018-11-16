@@ -292,7 +292,6 @@ void loop() {
 
   int cb = udp.parsePacket();
   if (cb >= NTP_PACKET_SIZE) {
-    debugPrint("packet received, length=" + String(cb, DEC));
     // We've received a packet, read the data from it
     udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
 
@@ -303,7 +302,6 @@ void loop() {
       }
       pckt += String(packetBuffer[i], HEX);
     }
-    debugPrint(pckt);
 
     //the timestamp starts at byte 40 of the received packet and is four bytes,
     // or two words, long. First, esxtract the two words:
@@ -313,7 +311,7 @@ void loop() {
     // combine the four bytes (two words) into a long integer
     // this is NTP time (seconds since Jan 1 1900):
     unsigned long secsSince1900 = highWord << 16 | lowWord;
-    debugPrint("Seconds since Jan 1 1900 = " + String(secsSince1900, DEC));
+    // debugPrint("Seconds since Jan 1 1900 = " + String(secsSince1900, DEC));
 
     // Sometimes we get broken time. In case 2018 does not appear yet, let's just ignore it silently
     if (secsSince1900 > 118*365*24*60*60) {
@@ -326,12 +324,13 @@ void loop() {
       timeRetreivedInMs = millis();
       initialUnixTime = epoch2;
       
-      debugPrint("Unix time = " + String(epoch2, DEC));
+      // debugPrint("Unix time = " + String(epoch2, DEC));
 
       // print the hour, minute and second:
 
       updateTime();
     } else {
+      debugPrint(pckt);
       debugPrint("INVALID TIME RECEIVED!");
     }
   }
