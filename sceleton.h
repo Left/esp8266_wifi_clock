@@ -60,8 +60,10 @@ DevParam wifiName("wifi.name", "WiFi SSID", "");
 DevParam wifiPwd("wifi.pwd", "WiFi Password", "", true);
 DevParam ntpTime("ntpTime", "Get NTP time", "true");
 DevParam invertRelayControl("invertRelay", "Invert relays", "false");
+DevParam hasScreen("hasScreen", "Has screen", "true");
+DevParam hasHX711("hasHX711", "Has HX711", "false");
 
-DevParam* devParams[] = { &deviceName, &wifiName, &wifiPwd, &ntpTime, &invertRelayControl }; 
+DevParam* devParams[] = { &deviceName, &wifiName, &wifiPwd, &ntpTime, &invertRelayControl, &hasScreen, &hasHX711 }; 
 
 void setup() {
     Serial.begin(115200);

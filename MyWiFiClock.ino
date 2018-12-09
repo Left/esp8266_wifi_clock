@@ -13,6 +13,8 @@
 #include "worklogic.h"
 #include "lcd.h"
 
+#include <Q2HX711.h>
+
 unsigned int localPort = 2390;      // local port to listen for UDP packets
 
 IPAddress timeServerIP; // time.nist.gov NTP server address
@@ -30,7 +32,7 @@ unsigned long sendNTPpacket(IPAddress& address);
 WiFiUDP udp;
 
 LcdScreen screen;
-MAX72xx screenController(screen, D5, D7, D6);
+MAX72xx* screenController;
 
 // #define BEEPER_PIN D2 // Beeper
 
@@ -39,6 +41,8 @@ IRrecv irrecv(D2); //
 int testCntr = 0;
 
 decode_results results;
+
+Q2HX711* hx711 = NULL;
 
 struct Key {
   const char* bin;
@@ -192,14 +196,21 @@ boolean relayIsInitialized = false;
 SoftwareSerial relay(D1, D0); // RX, TX
 
 void setup() {
-  // Initialize comms hardware
-  // pinMode(BEEPER_PIN, OUTPUT);
-  screenController.setup();
-  screen.showMessage("Инициализация...");
-
   irrecv.enableIRIn();  // Start the receiver
 
   sceleton::setup();
+
+  if (sceleton::hasHX711._value == "true") {
+    hx711 = new Q2HX711(D5, D6);
+  }
+
+  // Initialize comms hardware
+  // pinMode(BEEPER_PIN, OUTPUT);
+  if (sceleton::hasScreen._value == "true") {
+    screenController = new MAX72xx(screen, D5, D7, D6);
+    screenController->setup();
+  }
+  screen.showMessage("Инициализация...");
 
   sceleton::switchRelaySink = [](int id, bool val) {
     // Serial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
@@ -252,11 +263,27 @@ const int updateTimeEachSec = 600; // By default, update time each 600 seconds
 
 WiFiClient client;
 
+long lastWeight = 0;
+
 void loop() {
   if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInMs == 0 ? 5 : updateTimeEachSec)*1000))) {
     // debugPrint("Requesting time");
     timeRequestedAt = millis();
     sendNTPpacket(timeServerIP); // send an NTP packet to a time server
+  }
+
+  if (sceleton::hasHX711._value == "true" && millis() % 50 == 0) {
+    // Serial.println();
+    long val = hx711->read();
+    if (lastWeight == 0 || abs(lastWeight - val) > 500) {
+      String toSend = String("{ \"type\": \"weight\", ") + 
+        "\"value\": "  + String(val, DEC)  + " " +  
+        "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+        "}";
+
+      sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+    }
+    lastWeight = val;
   }
 
   oldMicros = micros();
@@ -270,7 +297,9 @@ void loop() {
     if (!sleeps) {
       screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
 
-      screenController.refreshAll();
+      if (screenController != NULL) {
+        screenController->refreshAll();
+      }
     }
 
     // int m = (hours*100 + mins);
@@ -280,12 +309,16 @@ void loop() {
       if (!wasSleeping) {
         debugPrint("Falling asleep");
       }
-      screenController.refreshAll();
+      if (screenController != NULL) {
+        screenController->refreshAll();
+      }
     }
   } else {
     const wchar_t* getTime = L"  Получаем время с сервера...  ";
     screen.printStr((micros() / 1000 / 50) % screen.getStrWidth(getTime), 0, getTime);
-    screenController.refreshAll();
+    if (screenController != NULL) {
+      screenController->refreshAll();
+    }
   }
 
   sceleton::loop();
