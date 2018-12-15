@@ -264,6 +264,7 @@ const int updateTimeEachSec = 600; // By default, update time each 600 seconds
 WiFiClient client;
 
 long lastWeight = 0;
+uint32_t lastWeightSent = 0;
 
 void loop() {
   if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInMs == 0 ? 5 : updateTimeEachSec)*1000))) {
@@ -275,13 +276,14 @@ void loop() {
   if (sceleton::hasHX711._value == "true" && millis() % 50 == 0) {
     // Serial.println();
     long val = hx711->read();
-    if (lastWeight == 0 || abs(lastWeight - val) > 500) {
+    if (lastWeight == 0 || abs(lastWeight - val) > 500 || (millis() - lastWeightSent) > 1000) {
       String toSend = String("{ \"type\": \"weight\", ") + 
-        "\"value\": "  + String(val, DEC)  + " " +  
+        "\"value\": "  + String(val, DEC)  + ", " +  
         "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
         "}";
 
       sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+      lastWeightSent = millis();
     }
     lastWeight = val;
   }
@@ -452,8 +454,6 @@ void updateTime() {
   uint32_t epoch = nowMs/1000ull;
   hours = (epoch % 86400L) / 3600;
   mins = (epoch % 3600) / 60;
-
-  // debugPrint("Time = " + String(hours, DEC) + ":" + String(mins, DEC));
 }
 
 // send an NTP request to the time server at the given address

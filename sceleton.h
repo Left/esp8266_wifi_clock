@@ -35,7 +35,7 @@ String fileToString(const String& fileName) {
 
 const String typeKey("type");
 
-const char* firmwareVersion = "00.12";
+const char* firmwareVersion = "00.13";
 
 std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsServer> webSocket;
