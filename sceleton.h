@@ -13,6 +13,7 @@ void debugPrint(const String& str);
 namespace sceleton {
 
 std::function<void(const char*)> showMessageSink = [](const char* s) {}; // Do nothing by default
+std::function<void(const char*)> showTuningMsgSink = [](const char* s) {}; // Do nothing by default
 std::function<void(int, bool)> switchRelaySink = [](int, bool) {}; // Do nothing by default
 void stringToFile(const String& fileName, const String& value) {
     File f = SPIFFS.open(fileName.c_str(), "w");
@@ -172,6 +173,8 @@ void setup() {
                     }
                 } else if (type == "show") {
                     showMessageSink(root["text"]);
+                } else if (type == "tune") {
+                    showTuningMsgSink(root["text"]);
                 }
 
                 break;

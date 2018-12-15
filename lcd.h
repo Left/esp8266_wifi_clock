@@ -77,16 +77,99 @@ public:
     }
 };
 
+/**
+ * Message to be shown on the screen
+ */
+class MsgToShow {
+    WSTR_MUTABLE _msg = NULL;
+public:
+    int strStartAt = 0;
+
+    WSTR c_str() {
+        return _msg;
+    }
+
+    bool isSet() {
+        return _msg != NULL;
+    }
+
+    void clear() {
+        free(_msg);
+        _msg = NULL;
+    }
+
+    void set(const WSTR* ss, uint32_t count) {
+        if (_msg != NULL) {
+            free(_msg);
+        }
+        uint32_t totalCnt = 0;
+        for (int i = 0; i < count; ++i) {
+            totalCnt += wcslen(ss[i]);
+        }
+        _msg = (WSTR_MUTABLE)malloc(2*totalCnt + 2);
+        WSTR_MUTABLE s = _msg;
+        for (int i = 0; i < count; ++i) {
+            for (int t = 0; ss[i][t] != 0; ++t) {
+                *s = ss[i][t];
+                s++;
+                *s = 0;
+            }
+        }
+        strStartAt = millis();
+    }
+
+    void set(const char* utf8str) {
+        if (_msg != NULL) {
+            free(_msg);
+        }
+        int maxSize = strlen(utf8str)*2;
+        _msg = (WSTR_MUTABLE)malloc(maxSize + 2);
+        memset(_msg, 0, maxSize + 1);
+        int srcLen = strlen(utf8str);
+        for (int i = 0, outIndex = 0; utf8str[i] != 0;) {
+            uint16_t sym = utf8str[i];
+            if ((sym & 0b10000000) == 0) {
+                // If an UCS fits 7 bits, its coded as 0xxxxxxx. This makes ASCII character represented by themselves
+                _msg[outIndex++] = sym;
+                i++;
+            } else if (
+                (sym & 0b11100000) == 0b11000000 && 
+                ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000
+            ) {
+                // If an UCS fits 11 bits, it is coded as 110xxxxx 10xxxxxx
+                _msg[outIndex++] = (((sym & 0b11111) << 6) & 0b11111000000) |
+                    ((uint16_t)utf8str[i+1] & 0b111111);
+                i+=2;
+            } else if (
+                (sym & 0b11110000) == 0x11100000 && 
+                ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000 &&
+                ((i + 2) < srcLen) && (utf8str[i+2] & 0b11000000) == 0b10000000
+            ) {
+                // If an UCS fits 16 bits, it is coded as 1110xxxx 10xxxxxx 10xxxxxx
+                _msg[outIndex++] = 
+                    (((sym & 0b1111) << 12) & 0b1111000000000000) |
+                    ((((uint16_t)utf8str[i+1] & 0b111111) << 6) & 0b111111000000) |
+                    ((uint16_t)utf8str[i+2] & 0b111111);
+
+                i+=3;
+            } else {
+                i++;
+            }
+        }
+        strStartAt = millis();
+    }
+};
 
 class LcdScreen {
 
 private:
     uint8_t screen[NUM_MAX * 8];
 
-
     uint32_t nextShowDateInMs = millis() + 5000;
-    int strStartAt = 0;
-    WSTR_MUTABLE _str = NULL;
+
+    MsgToShow _rollingMsg;
+    MsgToShow _tuningMsgNow;
+
     const uint32_t _scrollSpeed = 35;
     uint32_t _blinkStart = 0;
     const uint32_t _blinkTime = 30;
@@ -249,64 +332,39 @@ public:
         return w;        
     }
 
-    void showMessage(const char* utf8str) {
-        if (_str != NULL) {
-            free(_str);
-        }
-        int maxSize = strlen(utf8str)*2;
-        _str = (WSTR_MUTABLE)malloc(maxSize + 2);
-        memset(_str, 0, maxSize + 1);
-        int srcLen = strlen(utf8str);
-        for (int i = 0, outIndex = 0; utf8str[i] != 0;) {
-            uint16_t sym = utf8str[i];
-            if ((sym & 0b10000000) == 0) {
-                // If an UCS fits 7 bits, its coded as 0xxxxxxx. This makes ASCII character represented by themselves
-                _str[outIndex++] = sym;
-                i++;
-            } else if (
-                (sym & 0b11100000) == 0b11000000 && 
-                ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000
-            ) {
-                // If an UCS fits 11 bits, it is coded as 110xxxxx 10xxxxxx
-                _str[outIndex++] = (((sym & 0b11111) << 6) & 0b11111000000) |
-                    ((uint16_t)utf8str[i+1] & 0b111111);
-                i+=2;
-            } else if (
-                (sym & 0b11110000) == 0x11100000 && 
-                ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000 &&
-                ((i + 2) < srcLen) && (utf8str[i+2] & 0b11000000) == 0b10000000
-            ) {
-                // If an UCS fits 16 bits, it is coded as 1110xxxx 10xxxxxx 10xxxxxx
-                _str[outIndex++] = 
-                    (((sym & 0b1111) << 12) & 0b1111000000000000) |
-                    ((((uint16_t)utf8str[i+1] & 0b111111) << 6) & 0b111111000000) |
-                    ((uint16_t)utf8str[i+2] & 0b111111);
+    void showTuningMsg(const char* utf8str) {
+        _tuningMsgNow.set(utf8str);
+    }
 
-                i+=3;
-            } else {
-                i++;
-            }
-        }
-        strStartAt = millis();
+    void showMessage(const char* utf8str) {
+        _rollingMsg.set(utf8str);
     }
 
     /**
      * micros is current time in microseconds
      */
     void showTime(uint32_t daysSince1970, uint32_t millisSince1200) {
-        if (_str != NULL) {
-            uint32_t showedTime = millis() - strStartAt;
-            int32_t strW = getStrWidth(_str);
+        if (_tuningMsgNow.isSet()) {
+            uint32_t showedTime = millis() - _tuningMsgNow.strStartAt;
+            printStr(width() - 1, 0, _tuningMsgNow.c_str());
+            if (showedTime > 2000) {
+                _tuningMsgNow.clear();
+            }
+            return; // Nothing more
+        }
+
+        if (_rollingMsg.isSet()) {
+            uint32_t showedTime = millis() - _rollingMsg.strStartAt;
+            int32_t strW = getStrWidth(_rollingMsg.c_str());
             int32_t extraTime = (showedTime / _scrollSpeed) - strW;
-            printStr(extraTime < 0 ? ((showedTime / _scrollSpeed) % strW) : strW, 0, _str);
+            printStr(extraTime < 0 ? ((showedTime / _scrollSpeed) % strW) : strW, 0, _rollingMsg.c_str());
             if (extraTime > 30) {
-                free(_str);
-                _str = NULL;
+                _rollingMsg.clear();
             }
             return;
         } 
 
-        if (millisSince1200 / 1000 % 60 > 50) {
+        if (millisSince1200 / 1000 % 60 > 55 && !_rollingMsg.isSet()) {
             date::RTC rtc = {0};
             date::epoc2rtc(daysSince1970, rtc);
             wchar_t yearStr[10] = { 0 };
@@ -320,16 +378,7 @@ public:
                 L" ",
                 monthes[rtc.month]
             };
-            _str = (WSTR_MUTABLE)malloc(200);
-            strStartAt = millis();
-            WSTR_MUTABLE s = _str;
-            for (int i = 0; i < __countof(ss); ++i) {
-                for (int t = 0; ss[i][t] != 0; ++t) {
-                    *s = ss[i][t];
-                    s++;
-                    *s = 0;
-                }
-            }
+            _rollingMsg.set(ss, __countof(ss));
             return;
         }
         
