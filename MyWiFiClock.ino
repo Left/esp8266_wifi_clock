@@ -13,6 +13,7 @@
 #include "worklogic.h"
 #include "lcd.h"
 
+#include <OneWire.h>
 #include <Q2HX711.h>
 
 unsigned int localPort = 2390;      // local port to listen for UDP packets
@@ -195,10 +196,25 @@ int currRelayState = 0; // All relays are off by default
 boolean relayIsInitialized = false;
 SoftwareSerial relay(D1, D0); // RX, TX
 
+OneWire* oneWire;
+
+const long interval = 1000; // Request each second
+unsigned long nextRequest = millis();
+unsigned long nextRead = ULONG_MAX;
+typedef uint8_t DeviceAddress[8];
+DeviceAddress deviceAddress;
+
 void setup() {
   irrecv.enableIRIn();  // Start the receiver
 
   sceleton::setup();
+
+  if (sceleton::hasDS18B20._value == "true") {
+    oneWire = new OneWire(D1);
+
+    oneWire->reset_search();
+	  oneWire->search(deviceAddress);
+  }
 
   if (sceleton::hasHX711._value == "true") {
     hx711 = new Q2HX711(D5, D6);
@@ -291,6 +307,30 @@ void loop() {
       lastWeightSent = millis();
     }
     lastWeight = val;
+  }
+
+  if (oneWire != NULL) {
+    if (millis() > nextRequest) {
+      oneWire->reset();
+      oneWire->write(0xCC);   //Обращение ко всем датчикам
+      oneWire->write(0x44);   //Команда на конвертацию
+      nextRead = millis() + interval;
+      nextRequest = millis() + interval*2;
+    } else if (millis() > nextRead) {
+      oneWire->reset();
+      oneWire->select(deviceAddress);
+      oneWire->write(0xBE);                      //Считывание значения с датчика
+      uint32_t temp = (oneWire->read() << 3 | oneWire->read() << 11); //Принимаем два байта температуры
+      float val = (float) temp * 0.0078125;
+      // Serial.println("Temp " + String(val));
+      String toSend = String("{ \"type\": \"temp\", ") + 
+        "\"value\": "  + String(val)  + ", " +  
+        "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+        "}";
+      sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+
+      nextRead = ULONG_MAX;
+    }
   }
 
   oldMicros = micros();

@@ -36,7 +36,7 @@ String fileToString(const String& fileName) {
 
 const String typeKey("type");
 
-const char* firmwareVersion = "00.13";
+const char* firmwareVersion = "00.14";
 
 std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsServer> webSocket;
@@ -62,9 +62,10 @@ DevParam wifiPwd("wifi.pwd", "WiFi Password", "", true);
 DevParam ntpTime("ntpTime", "Get NTP time", "true");
 DevParam invertRelayControl("invertRelay", "Invert relays", "false");
 DevParam hasScreen("hasScreen", "Has screen", "true");
-DevParam hasHX711("hasHX711", "Has HX711", "false");
+DevParam hasHX711("hasHX711", "Has HX711 (weight detector)", "false");
+DevParam hasDS18B20("hasDS18B20", "Has DS18B20 (temp sensor)", "false");
 
-DevParam* devParams[] = { &deviceName, &wifiName, &wifiPwd, &ntpTime, &invertRelayControl, &hasScreen, &hasHX711 }; 
+DevParam* devParams[] = { &deviceName, &wifiName, &wifiPwd, &ntpTime, &invertRelayControl, &hasScreen, &hasHX711, &hasDS18B20 }; 
 
 void setup() {
     Serial.begin(115200);
