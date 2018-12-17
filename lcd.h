@@ -93,6 +93,10 @@ public:
         return _msg != NULL;
     }
 
+    bool empty() {
+        return !isSet() || (_msg[0] == 0);
+    }
+
     void clear() {
         free(_msg);
         _msg = NULL;
@@ -169,6 +173,7 @@ private:
 
     MsgToShow _rollingMsg;
     MsgToShow _tuningMsgNow;
+    MsgToShow _additionalInfo;
 
     const uint32_t _scrollSpeed = 35;
     uint32_t _blinkStart = 0;
@@ -340,6 +345,10 @@ public:
         _rollingMsg.set(utf8str);
     }
 
+    void setAdditionalInfo(const char* utf8str) {
+        _additionalInfo.set(utf8str);
+    }
+
     /**
      * micros is current time in microseconds
      */
@@ -376,9 +385,11 @@ public:
                 L", ",
                 dayStr,
                 L" ",
-                monthes[rtc.month]
+                monthes[rtc.month],
+                L" ",
+                _additionalInfo.c_str()
             };
-            _rollingMsg.set(ss, __countof(ss));
+            _rollingMsg.set(ss, __countof(ss) - (_additionalInfo.empty() ? 2 : 0));
             return;
         }
         

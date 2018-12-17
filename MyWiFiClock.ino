@@ -261,6 +261,11 @@ void setup() {
     screen.showTuningMsg(dd);
   };
 
+  sceleton::setAdditionalInfoSink = [](const char* dd) {
+    // 
+    screen.setAdditionalInfo(dd);
+  };
+
   udp.begin(localPort);
 
   WiFi.hostByName(ntpServerName, timeServerIP);

@@ -14,6 +14,7 @@ namespace sceleton {
 
 std::function<void(const char*)> showMessageSink = [](const char* s) {}; // Do nothing by default
 std::function<void(const char*)> showTuningMsgSink = [](const char* s) {}; // Do nothing by default
+std::function<void(const char*)> setAdditionalInfoSink = [](const char* s) {}; // Do nothing by default
 std::function<void(int, bool)> switchRelaySink = [](int, bool) {}; // Do nothing by default
 void stringToFile(const String& fileName, const String& value) {
     File f = SPIFFS.open(fileName.c_str(), "w");
@@ -36,7 +37,7 @@ String fileToString(const String& fileName) {
 
 const String typeKey("type");
 
-const char* firmwareVersion = "00.14";
+const char* firmwareVersion = "00.15";
 
 std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsServer> webSocket;
@@ -124,7 +125,7 @@ void setup() {
                 IPAddress ip = webSocket->remoteIP(num);
                 // Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
 
-                webSocket->sendTXT(num, String("{ \"type\":\"hello\", \"firmware\":\"") + firmwareVersion + "\" }");
+                webSocket->sendTXT(num, String("{ \"type\":\"hello\", \"firmware\":\"") + firmwareVersion + "\", \"afterRestart\": " + millis() + " }");
 
                 // send message to client
                 debugPrint("Connected client " + String(num, DEC) + " (" + sceleton::deviceName._value +  "), firmware ver = " + firmwareVersion);
@@ -176,6 +177,9 @@ void setup() {
                     showMessageSink(root["text"]);
                 } else if (type == "tune") {
                     showTuningMsgSink(root["text"]);
+                } else if (type == "additional-info") {
+                    // 
+                    setAdditionalInfoSink(root["text"]);
                 }
 
                 break;
