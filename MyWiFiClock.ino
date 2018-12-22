@@ -269,7 +269,6 @@ void setup() {
   };
 
   sceleton::showTuningMsgSink = [](const char* dd) {
-    // 
     screen.showTuningMsg(dd);
   };
 

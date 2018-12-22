@@ -132,34 +132,35 @@ public:
         int srcLen = strlen(utf8str);
         for (int i = 0, outIndex = 0; utf8str[i] != 0;) {
             uint16_t sym = utf8str[i];
-            if ((sym & 0b10000000) == 0) {
-                // If an UCS fits 7 bits, its coded as 0xxxxxxx. This makes ASCII character represented by themselves
-                _msg[outIndex++] = sym;
-                i++;
-            } else if (
-                (sym & 0b11100000) == 0b11000000 && 
-                ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000
-            ) {
-                // If an UCS fits 11 bits, it is coded as 110xxxxx 10xxxxxx
-                _msg[outIndex++] = (((sym & 0b11111) << 6) & 0b11111000000) |
-                    ((uint16_t)utf8str[i+1] & 0b111111);
-                i+=2;
-            } else if (
-                (sym & 0b11110000) == 0x11100000 && 
+
+            if (
+                (sym & 0b11110000) == 0b11100000 && 
                 ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000 &&
                 ((i + 2) < srcLen) && (utf8str[i+2] & 0b11000000) == 0b10000000
             ) {
-                // If an UCS fits 16 bits, it is coded as 1110xxxx 10xxxxxx 10xxxxxx
+                    // If an UCS fits 16 bits, it is coded as 1110xxxx 10xxxxxx 10xxxxxx
                 _msg[outIndex++] = 
                     (((sym & 0b1111) << 12) & 0b1111000000000000) |
                     ((((uint16_t)utf8str[i+1] & 0b111111) << 6) & 0b111111000000) |
                     ((uint16_t)utf8str[i+2] & 0b111111);
 
                 i+=3;
+            } else if (
+                (sym & 0b11100000) == 0b11000000 && 
+                ((i + 1) < srcLen) && (utf8str[i+1] & 0b11000000) == 0b10000000) {
+                // If an UCS fits 11 bits, it is coded as 110xxxxx 10xxxxxx
+                _msg[outIndex++] = (((sym & 0b11111) << 6) & 0b11111000000) |
+                    ((uint16_t)utf8str[i+1] & 0b111111);
+                i+=2;
+            } else if ((sym & 0b10000000) == 0) {
+                // If an UCS fits 7 bits, its coded as 0xxxxxxx. This makes ASCII character represented by themselves
+                _msg[outIndex++] = sym;
+                i++;
             } else {
                 i++;
             }
         }
+
         strStartAt = millis();
     }
 };
@@ -264,18 +265,21 @@ public:
 
     const uint8_t* symbolPtrOrNull(wchar_t symbol) {
         int fontItem = fontUA[0];
-        int sym1251 = symbol & 0xffff;
-        if (sym1251 >= 0x410 && sym1251 < 0x450) {
-            sym1251 = sym1251 - 0x410 + 0xa0;
-        } else if (sym1251 == 0x401) {
-            sym1251 = 0x100 - 0x20; // Ё
-        } else if (sym1251 == 0x451) {
-            sym1251 = 0x101 - 0x20; // ё
+        int unicodeSym = symbol & 0xffff;
+        if (unicodeSym >= 0x410 && unicodeSym < 0x450) {
+            unicodeSym = unicodeSym - 0x410 + 0xa0;
+        } else if (unicodeSym == 0x401) {
+            unicodeSym = 0x100 - 0x20; // Ё
+        } else if (unicodeSym == 0x451) {
+            unicodeSym = 0x101 - 0x20; // ё
+        } else if (unicodeSym == 0xE000) {
+            unicodeSym = 0x102 - 0x20; // Speaker
         } else {
-            sym1251 = sym1251 - 0x20;
+            unicodeSym = unicodeSym - 0x20;
         }
-        if (sym1251 >= 0 && sym1251 < (sizeof(fontUA) - 1)/fontItem) {
-            return fontUA + 1 + sym1251*fontItem;
+
+        if (unicodeSym >= 0 && unicodeSym < (sizeof(fontUA) - 1)/fontItem) {
+            return fontUA + 1 + unicodeSym*fontItem;
         }
         return NULL;
     }
