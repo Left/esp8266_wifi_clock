@@ -128,7 +128,7 @@ public:
         }
         int maxSize = strlen(utf8str)*2;
         _msg = (WSTR_MUTABLE)malloc(maxSize + 2);
-        memset(_msg, 0, maxSize + 1);
+        memset(_msg, 0, maxSize + 2);
         int srcLen = strlen(utf8str);
         for (int i = 0, outIndex = 0; utf8str[i] != 0;) {
             uint16_t sym = utf8str[i];

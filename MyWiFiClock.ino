@@ -204,6 +204,12 @@ unsigned long nextRead = ULONG_MAX;
 typedef uint8_t DeviceAddress[8];
 DeviceAddress deviceAddress;
 
+int interruptCounter = 0;
+
+void handleInterrupt() {
+  interruptCounter++;
+}
+
 void setup() {
   irrecv.enableIRIn();  // Start the receiver
 
@@ -226,6 +232,12 @@ void setup() {
     screenController = new MAX72xx(screen, D5, D7, D6);
     screenController->setup();
   }
+
+  if (sceleton::hasButton._value == "true") {
+    pinMode(D7, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(D7), handleInterrupt, FALLING);
+  }
+
   screen.showMessage("Инициализация...");
 
   sceleton::switchRelaySink = [](int id, bool val) {
@@ -293,6 +305,16 @@ long lastWeight = 0;
 uint32_t lastWeightSent = 0;
 
 void loop() {
+  if (interruptCounter > 0) {
+    String toSend = String("{ \"type\": \"button\", ") + 
+        "\"value\": true"  + ", " +  
+        "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+        "}";
+
+    sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+    interruptCounter = 0;
+  }
+
   if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInMs == 0 ? 5 : updateTimeEachSec)*1000))) {
     // debugPrint("Requesting time");
     timeRequestedAt = millis();
