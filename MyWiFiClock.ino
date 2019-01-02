@@ -191,7 +191,6 @@ const Remote* remotes[] = {
 int lastCanonRemoteCmd = millis();
 int lastNumber = millis();
 boolean invertRelayState = false;
-int currRelayState = 0; // All relays are off by default
 
 boolean relayIsInitialized = false;
 SoftwareSerial relay(D1, D0); // RX, TX
@@ -213,7 +212,64 @@ void handleInterrupt() {
 void setup() {
   irrecv.enableIRIn();  // Start the receiver
 
-  sceleton::setup();
+  class SinkImpl : public sceleton::Sink {
+  private:
+    int currRelayState; // All relays are off by default
+
+  public:
+    SinkImpl() : currRelayState(0) {
+
+    }
+
+    virtual void switchRelay(int id, bool val) {
+      // Serial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
+      debugPrint(String("switchRelaySink: ") + (val ? "true" : "false"));
+
+      int bit = 1 << id;
+      currRelayState = currRelayState & ~bit;
+      if (val) {
+        currRelayState = currRelayState | bit;
+      }
+
+      if (!relayIsInitialized) {
+        relay.begin(9600);
+        delay(100);
+        relay.write(0x50);
+        delay(100);
+        relay.write(0x51);
+        delay(100);
+        relayIsInitialized = true;
+      }
+      
+      relay.write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
+    }
+
+    virtual void showMessage(const char* dd) {
+      // 
+      screen.showMessage(dd);
+    }
+
+    virtual void showTuningMsg(const char* dd) {
+      screen.showTuningMsg(dd);
+    }
+
+    virtual void setAdditionalInfo(const char* dd) {
+      // 
+      screen.setAdditionalInfo(dd);
+    }
+
+    virtual void setBrightness(int percents) {
+      if (screenController != NULL) {
+        screenController->setBrightness(percents);
+      }
+    }
+
+    virtual void reboot() {
+       ESP.restart();      
+    }
+  };
+
+  sceleton::setup(new SinkImpl());
 
   if (sceleton::hasDS18B20._value == "true") {
     oneWire = new OneWire(D1);
@@ -239,43 +295,6 @@ void setup() {
   }
 
   screen.showMessage("Инициализация...");
-
-  sceleton::switchRelaySink = [](int id, bool val) {
-    // Serial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
-    debugPrint(String("switchRelaySink: ") + (val ? "true" : "false"));
-
-    int bit = 1 << id;
-    currRelayState = currRelayState & ~bit;
-    if (val) {
-      currRelayState = currRelayState | bit;
-    }
-
-    if (!relayIsInitialized) {
-      relay.begin(9600);
-      delay(100);
-      relay.write(0x50);
-      delay(100);
-      relay.write(0x51);
-      delay(100);
-      relayIsInitialized = true;
-    }
-    
-    relay.write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
-  };
-
-  sceleton::showMessageSink = [](const char* dd) {
-    // 
-    screen.showMessage(dd);
-  };
-
-  sceleton::showTuningMsgSink = [](const char* dd) {
-    screen.showTuningMsg(dd);
-  };
-
-  sceleton::setAdditionalInfoSink = [](const char* dd) {
-    // 
-    screen.setAdditionalInfo(dd);
-  };
 
   udp.begin(localPort);
 
@@ -530,7 +549,6 @@ void updateTime() {
 // send an NTP request to the time server at the given address
 unsigned long sendNTPpacket(IPAddress& address) {
   if (sceleton::ntpTime._value == "true") {
-    debugPrint("sending NTP packet...");
     // set all bytes in the buffer to 0
     memset(packetBuffer, 0, NTP_PACKET_SIZE);
     // Initialize values needed to form NTP request

@@ -7,17 +7,16 @@
             "label": "build",
             "type": "shell",
             "command": "g++",
-            "args": ["-o",
-                 "${workspaceRoot}/out/lcdtest.out", 
-                 "-lcurses", 
-                 "-std=c++11",
-                 // "-lterminfo",
-                 "${workspaceRoot}/snippets/lcdtest.cpp"],
-            // use options.cwd property if the Makefile is not in the project root ${workspaceRoot} dir
+            "args": [
+                "-o",
+                "${workspaceRoot}/out/lcdtest.out",
+                "-lcurses",
+                "-std=c++11",
+                "${workspaceRoot}/snippets/lcdtest.cpp"
+            ],
             "options": {
                 "cwd": "${workspaceRoot}/snippets"
             },
-            // start the build without prompting for task selection, use "group": "build" otherwise
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -28,10 +27,11 @@
                 "focus": false,
                 "panel": "shared"
             },
-            // Use the standard less compilation problem matcher.
             "problemMatcher": {
                 "owner": "cpp",
-                "fileLocation": ["absolute"],
+                "fileLocation": [
+                    "absolute"
+                ],
                 "pattern": {
                     "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
                     "file": 1,
@@ -42,21 +42,20 @@
                 }
             }
         },
-
         {
             "label": "build_date_test",
             "type": "shell",
             "command": "g++",
-            "args": ["-o",
-                 "${workspaceRoot}/out/dateTest.out", 
-                 "-lcurses", 
-                 "-std=c++11",
-                 "${workspaceRoot}/snippets/dateTest.cpp"],
-            // use options.cwd property if the Makefile is not in the project root ${workspaceRoot} dir
+            "args": [
+                "-o",
+                "${workspaceRoot}/out/dateTest.out",
+                "-lcurses",
+                "-std=c++11",
+                "${workspaceRoot}/snippets/dateTest.cpp"
+            ],
             "options": {
                 "cwd": "${workspaceRoot}/snippets"
             },
-            // start the build without prompting for task selection, use "group": "build" otherwise
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -67,10 +66,11 @@
                 "focus": false,
                 "panel": "shared"
             },
-            // Use the standard less compilation problem matcher.
             "problemMatcher": {
                 "owner": "cpp",
-                "fileLocation": ["absolute"],
+                "fileLocation": [
+                    "absolute"
+                ],
                 "pattern": {
                     "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
                     "file": 1,
@@ -80,21 +80,30 @@
                     "message": 5
                 }
             }
+        },
+        {
+            "label": "run_date_test",
+            "type": "shell",
+            "command": "${workspaceRoot}/out/dateTest.out",
+            "dependsOn": [
+                "build_date_test"
+            ],
+            "problemMatcher": []
         },
         {
             "label": "build_utf8_test",
             "type": "shell",
             "command": "g++",
-            "args": ["-o",
-                 "${workspaceRoot}/out/utf8decode.out", 
-                 "-lcurses", 
-                 "-std=c++11",
-                 "${workspaceRoot}/snippets/utf8decode.cpp"],
-            // use options.cwd property if the Makefile is not in the project root ${workspaceRoot} dir
+            "args": [
+                "-o",
+                "${workspaceRoot}/out/utf8decode.out",
+                "-lcurses",
+                "-std=c++11",
+                "${workspaceRoot}/snippets/utf8decode.cpp"
+            ],
             "options": {
                 "cwd": "${workspaceRoot}/snippets"
             },
-            // start the build without prompting for task selection, use "group": "build" otherwise
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -105,10 +114,11 @@
                 "focus": false,
                 "panel": "shared"
             },
-            // Use the standard less compilation problem matcher.
             "problemMatcher": {
                 "owner": "cpp",
-                "fileLocation": ["absolute"],
+                "fileLocation": [
+                    "absolute"
+                ],
                 "pattern": {
                     "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
                     "file": 1,

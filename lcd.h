@@ -11,13 +11,13 @@ typedef const wchar_t* WSTR;
 typedef wchar_t* WSTR_MUTABLE;
 
 const WSTR weekdays[] = {
-    L"Понедельник", 
-    L"Вторник",
-    L"Среда",
-    L"Четверг",
-    L"Пятница",
-    L"Суббота",
-    L"Воскресенье"
+    L"Пн", 
+    L"Вт",
+    L"Ср",
+    L"Чт",
+    L"Птн",
+    L"Сб",
+    L"Вс"
 };
 
 const WSTR monthes[] = {
@@ -394,6 +394,10 @@ public:
                 _additionalInfo.c_str()
             };
             _rollingMsg.set(ss, __countof(ss) - (_additionalInfo.empty() ? 2 : 0));
+            // debugPrint("Month: " + String(rtc.month, 10) +
+            //         " doy " + String(rtc.doy, 10) +
+            //         " year " + String(rtc.year, 10) +
+            //         " : " + String(daysSince1970, 10) );
             return;
         }
         
@@ -486,6 +490,11 @@ public:
         digitalWrite(CS_PIN, HIGH);
     }
 
+    void setBrightness(int percents) {
+        sendCmdAll(OP_INTENSITY, percents * 15 / 100); // minimum brightness
+        debugPrint("Setting brightness to " + String(percents, DEC));
+    }
+
     void setup() {
         pinMode(CS_PIN, OUTPUT);
         pinMode(DATA_PIN, OUTPUT);
@@ -496,7 +505,7 @@ public:
         sendCmdAll(OP_SCANLIMIT, 7);
         sendCmdAll(OP_DECODEMODE, 0);
         sendCmdAll(OP_SHUTDOWN, 1);
-        sendCmdAll(OP_INTENSITY, 0); // minimum brightness
+        // sendCmdAll(OP_INTENSITY, 0); // minimum brightness
     }
 
     void refreshAll() {

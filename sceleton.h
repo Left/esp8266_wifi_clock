@@ -12,10 +12,16 @@ void debugPrint(const String& str);
 
 namespace sceleton {
 
-std::function<void(const char*)> showMessageSink = [](const char* s) {}; // Do nothing by default
-std::function<void(const char*)> showTuningMsgSink = [](const char* s) {}; // Do nothing by default
-std::function<void(const char*)> setAdditionalInfoSink = [](const char* s) {}; // Do nothing by default
-std::function<void(int, bool)> switchRelaySink = [](int, bool) {}; // Do nothing by default
+class Sink {
+public:
+    virtual void showMessage(const char* s) {}
+    virtual void showTuningMsg(const char* s) {}
+    virtual void setAdditionalInfo(const char* s) {}
+    virtual void switchRelay(int id, bool val) {}
+    virtual void setBrightness(int percents) {}
+    virtual void reboot() {}
+};
+
 void stringToFile(const String& fileName, const String& value) {
     File f = SPIFFS.open(fileName.c_str(), "w");
     f.write((uint8_t*)value.c_str(), value.length());
@@ -37,7 +43,7 @@ String fileToString(const String& fileName) {
 
 const String typeKey("type");
 
-const char* firmwareVersion = "00.16";
+const char* firmwareVersion = "00.17";
 
 std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsServer> webSocket;
@@ -55,6 +61,10 @@ public:
         _value(value),
         _password(pwd) {
     }
+
+    void save() {
+        stringToFile(String(_name), _value);
+    }
 };
 
 DevParam deviceName("device.name", "Device Name", String("ESP_") + ESP.getChipId());
@@ -66,10 +76,13 @@ DevParam hasScreen("hasScreen", "Has screen", "true");
 DevParam hasHX711("hasHX711", "Has HX711 (weight detector)", "false");
 DevParam hasDS18B20("hasDS18B20", "Has DS18B20 (temp sensor)", "false");
 DevParam hasButton("hasButton", "Has button on D7", "false");
+DevParam brightness("brightness", "Brightness [0..100]", "0");
 
-DevParam* devParams[] = { &deviceName, &wifiName, &wifiPwd, &ntpTime, &invertRelayControl, &hasScreen, &hasHX711, &hasDS18B20, &hasButton }; 
+DevParam* devParams[] = { &deviceName, &wifiName, &wifiPwd, &ntpTime, &invertRelayControl, &hasScreen, &hasHX711, &hasDS18B20, &hasButton, &brightness }; 
+Sink* sink = new Sink();
 
-void setup() {
+void setup(Sink* _sink) {
+    sink = _sink;
     Serial.begin(115200);
     SPIFFS.begin();
 
@@ -155,10 +168,10 @@ void setup() {
                 } else if (type == "switch") {
                     // Serial.println("switch!");
                     webSocket->sendTXT(num, "{ \"result\":\"Doing\" }");
-                    switchRelaySink(atoi(root["id"]), root["on"] == "true");
+                    sink->switchRelay(atoi(root["id"]), root["on"] == "true");
                     webSocket->sendTXT(num, "{ \"result\":\"OK\" }");
                 } else if (type == "firmware-update") {
-                    showMessageSink("Update");
+                    sink->showMessage("Update");
                     t_httpUpdate_return ret = ESPhttpUpdate.update("192.168.121.38", 8080, "/esp8266/update");
                     Serial.println("Update 3 " + String(ret, DEC));
                     switch(ret) {
@@ -175,14 +188,21 @@ void setup() {
                             break;
                     }
                 } else if (type == "show") {
-                    showMessageSink(root["text"]);
+                    sink->showMessage(root["text"]);
                 } else if (type == "tune") {
-                    showTuningMsgSink(root["text"]);
+                    sink->showTuningMsg(root["text"]);
+                } else if (type == "brightness") {
+                    int val = root["value"].as<int>();
+                    val = std::max(std::min(val, 100), 0);
+                    sink->setBrightness(val);
+                    brightness._value = String(val, DEC);
+                    brightness.save();
                 } else if (type == "additional-info") {
                     // 
-                    setAdditionalInfoSink(root["text"]);
+                    sink->setAdditionalInfo(root["text"]);
+                } else if (type == "reboot") {
+                    sink->reboot();
                 }
-
                 break;
             }
             case WStype_BIN: {
@@ -208,7 +228,7 @@ void setup() {
                 if (!d->_password || val.length() > 0) {
                     if (d->_value != val) {
                         d->_value = val;
-                        stringToFile(String(d->_name), d->_value);
+                        d->save();
                         needReboot = true;
                     }
                 }
@@ -217,7 +237,7 @@ void setup() {
         
         if (needReboot) {
             request->send(200, "text/html", "Settings changed, rebooting...");  
-            ESP.reset();
+            sink->reboot();
         } else {
             request->send(200, "text/html", "Nothing changed.");  
         }
@@ -251,11 +271,11 @@ void setup() {
 
     ArduinoOTA.onStart([]() {
         // Serial.println("Start OTA");  //  "Начало OTA-апдейта"
-        showMessageSink("Updating...");
+        sink->showMessage("Updating...");
     });
     ArduinoOTA.onEnd([]() {
         // Serial.println("End OTA");  //  "Завершение OTA-апдейта"
-        showMessageSink("Done...");
+        sink->showMessage("Done...");
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         // Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
@@ -289,9 +309,14 @@ void loop() {
     ArduinoOTA.handle();
     webSocket->loop();
 
-    if (millis() % 1000 == 0 && WiFi.status() != WL_CONNECTED) {
-        if (millis() - lastConnected > 15000) {
-            ESP.reset();
+    if (millis() % 1000 == 0) {
+        // Set brightness if saved
+        sink->setBrightness(brightness._value.toInt());
+
+        if (WiFi.status() != WL_CONNECTED) {
+            if (millis() - lastConnected > 30000) {
+                ESP.reset();
+            }
         }
     } else {
         lastConnected = millis();
