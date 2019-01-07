@@ -492,7 +492,7 @@ public:
 
     void setBrightness(int percents) {
         sendCmdAll(OP_INTENSITY, percents * 15 / 100); // minimum brightness
-        debugPrint("Setting brightness to " + String(percents, DEC));
+        // debugPrint("Setting brightness to " + String(percents, DEC));
     }
 
     void setup() {

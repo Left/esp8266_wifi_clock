@@ -221,9 +221,13 @@ void setup() {
 
     }
 
-    virtual void switchRelay(int id, bool val) {
+    virtual boolean relayState(uint32_t id) { 
+      int bit = 1 << id;
+      return (currRelayState & bit) != 0;
+    } 
+
+    virtual void switchRelay(uint32_t id, bool val) {
       // Serial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
-      debugPrint(String("switchRelaySink: ") + (val ? "true" : "false"));
 
       int bit = 1 << id;
       currRelayState = currRelayState & ~bit;
@@ -291,7 +295,7 @@ void setup() {
 
   if (sceleton::hasButton._value == "true") {
     pinMode(D7, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(D7), handleInterrupt, FALLING);
+    attachInterrupt(digitalPinToInterrupt(D7), handleInterrupt, CHANGE);
   }
 
   screen.showMessage("Инициализация...");
@@ -325,11 +329,11 @@ uint32_t lastWeightSent = 0;
 void loop() {
   if (interruptCounter > 0) {
     String toSend = String("{ \"type\": \"button\", ") + 
-        "\"value\": true"  + ", " +  
+        "\"value\": " + (digitalRead(D7) == LOW ? "true" : "false") + ", " +  
         "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
         "}";
 
-    sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+    sceleton::send(toSend);
     interruptCounter = 0;
   }
 
@@ -348,7 +352,7 @@ void loop() {
         "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
         "}";
 
-      sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+      sceleton::send(toSend);
       lastWeightSent = millis();
     }
     lastWeight = val;
@@ -372,7 +376,7 @@ void loop() {
         "\"value\": "  + String(val)  + ", " +  
         "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
         "}";
-      sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+      sceleton::send(toSend);
 
       nextRead = ULONG_MAX;
     }
@@ -509,7 +513,7 @@ void loop() {
               "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
               "}";
 
-            sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
+            sceleton::send(toSend);
 
             break;
           }

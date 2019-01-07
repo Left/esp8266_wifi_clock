@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <WebSockets.h>
-#include <WebSocketsServer.h>
+#include <WebSocketsClient.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoOTA.h>
 #include <ESP8266httpUpdate.h>
@@ -17,7 +17,8 @@ public:
     virtual void showMessage(const char* s) {}
     virtual void showTuningMsg(const char* s) {}
     virtual void setAdditionalInfo(const char* s) {}
-    virtual void switchRelay(int id, bool val) {}
+    virtual void switchRelay(uint32_t id, bool val) {}
+    virtual boolean relayState(uint32_t id) { return false; } 
     virtual void setBrightness(int percents) {}
     virtual void reboot() {}
 };
@@ -43,10 +44,14 @@ String fileToString(const String& fileName) {
 
 const String typeKey("type");
 
-const char* firmwareVersion = "00.17";
+const char* firmwareVersion = "00.19";
 
 std::auto_ptr<AsyncWebServer> setupServer;
-std::auto_ptr<WebSocketsServer> webSocket;
+std::auto_ptr<WebSocketsClient> webSocketClient;
+
+void send(const String& toSend) {
+    webSocketClient->sendTXT(toSend.c_str(), toSend.length());
+}
 
 class DevParam {
 public:
@@ -68,8 +73,11 @@ public:
 };
 
 DevParam deviceName("device.name", "Device Name", String("ESP_") + ESP.getChipId());
+DevParam deviceNameRussian("device.name.russian", "Device Name (russian)", "");
 DevParam wifiName("wifi.name", "WiFi SSID", "");
 DevParam wifiPwd("wifi.pwd", "WiFi Password", "", true);
+DevParam websocketServer("websocket.server", "WebSocket server", "");
+DevParam websocketPort("websocket.port", "WebSocket port", "");
 DevParam ntpTime("ntpTime", "Get NTP time", "true");
 DevParam invertRelayControl("invertRelay", "Invert relays", "false");
 DevParam hasScreen("hasScreen", "Has screen", "true");
@@ -77,15 +85,36 @@ DevParam hasHX711("hasHX711", "Has HX711 (weight detector)", "false");
 DevParam hasDS18B20("hasDS18B20", "Has DS18B20 (temp sensor)", "false");
 DevParam hasButton("hasButton", "Has button on D7", "false");
 DevParam brightness("brightness", "Brightness [0..100]", "0");
+DevParam relayNames("relay.names", "Relay names, separated by ;", "");
 
-DevParam* devParams[] = { &deviceName, &wifiName, &wifiPwd, &ntpTime, &invertRelayControl, &hasScreen, &hasHX711, &hasDS18B20, &hasButton, &brightness }; 
+DevParam* devParams[] = { 
+    &deviceName, 
+    &deviceNameRussian,
+    &wifiName, 
+    &wifiPwd, 
+    &websocketServer, 
+    &websocketPort, 
+    &ntpTime, 
+    &invertRelayControl, 
+    &hasScreen, 
+    &hasHX711, 
+    &hasDS18B20, 
+    &hasButton, 
+    &brightness,
+    &relayNames
+}; 
 Sink* sink = new Sink();
+
+void reportRelayState(uint32_t id) {
+    send("{ \"type\": \"relayState\", \"id\": " + String(id, DEC) + ", \"value\":" + (sink->relayState(id) ? "true" : "false") + " }");
+}
 
 void setup(Sink* _sink) {
     sink = _sink;
     Serial.begin(115200);
     SPIFFS.begin();
 
+    uint32_t was = millis();
     // Read initial settings
     for (DevParam* d : devParams) {
         String readVal = fileToString(String(d->_name));
@@ -93,9 +122,11 @@ void setup(Sink* _sink) {
             d->_value = readVal;
         }
     }
+    Serial.println("Initialized in " + String(millis() - was, DEC));
 
     if (wifiName._value.length() > 0 && wifiPwd._value.length() > 0) {
         WiFi.mode(WIFI_STA);
+        WiFi.hostname("ESP8266_" + deviceName._value);
         WiFi.begin(wifiName._value.c_str(), wifiPwd._value.c_str());
         WiFi.waitForConnectResult();
     }
@@ -128,32 +159,66 @@ void setup(Sink* _sink) {
         Serial.println(String("ESP AccessPoint IP address : ") + accessIP.toString());
     }
 
-    webSocket.reset(new WebSocketsServer(8081, "*"));
-    webSocket->onEvent([&](uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
+    webSocketClient.reset(new WebSocketsClient());
+    auto wsHandler = [&](WStype_t type, uint8_t *payload, size_t length) {
         switch (type) {
             case WStype_DISCONNECTED: {
                 // Serial.printf("[%u] Disconnected!\n", num);
                 break;
             }
             case WStype_CONNECTED: {
-                IPAddress ip = webSocket->remoteIP(num);
-                // Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+                String devParamsStr = "{ ";
+                bool first = true;
+                for (DevParam* d : devParams) {
+                    if (!d->_password) {
+                        if (!first) { 
+                            devParamsStr += ",";
+                        }
+                        first = false;
+                        devParamsStr += "\"",
+                        devParamsStr += d->_name;
+                        devParamsStr += "\": \"",
+                        devParamsStr += d->_value;
+                        devParamsStr += "\" ";
+                    }
+                }
+                devParamsStr += "}";
 
-                webSocket->sendTXT(num, String("{ \"type\":\"hello\", \"firmware\":\"") + firmwareVersion + "\", \"afterRestart\": " + millis() + " }");
+                // Let's say hello and show all we can
+                send(String("{ ") +
+                    "\"type\":\"hello\", " +
+                    "\"firmware\":\"" + firmwareVersion + "\", " +
+                    "\"afterRestart\": " + millis() + ", " + 
+                    "\"devParams\": " + devParamsStr + ", " + 
+                    "\"deviceName\":\"" + sceleton::deviceName._value + "\"" + 
+                    " }");
 
                 // send message to client
-                debugPrint("Connected client " + String(num, DEC) + " (" + sceleton::deviceName._value +  "), firmware ver = " + firmwareVersion);
+                // debugPrint("Hello server " + " (" + sceleton::deviceName._value +  "), firmware ver = " + firmwareVersion);
+                int cnt = 0;
+                for (const char* p = sceleton::relayNames._value.c_str(); *p != 0; ++p) {
+                    if (*p == ';') {
+                        if (cnt == 0) {
+                            cnt = 1;
+                        }
+
+                        cnt++;
+                    }
+                }
+                for (int id = 0; id < cnt; ++id) {
+                    send("{ \"type\": \"relayState\", \"id\": " + String(id, DEC) + ", \"value\":" + (sink->relayState(id) ? "true" : "false") + " }");
+                }
                 break;
             }
             case WStype_TEXT: {
-                // Serial.printf("[%u] get Text: %s\n", num, payload);
+                // Serial.printf("[%u] get Text: %s\n", payload);
                 DynamicJsonDocument jsonBuffer;
 
                 DeserializationError error = deserializeJson(jsonBuffer, payload);
 
                 if (error) {
                     // Serial.println("parseObject() failed");
-                    webSocket->sendTXT(num, "{ \"errorMsg\":\"Failed to parse JSON\" }");
+                    send("{ \"errorMsg\":\"Failed to parse JSON\" }");
                     return;
                 }
 
@@ -161,15 +226,16 @@ void setup(Sink* _sink) {
 
                 String type = root[typeKey];
                 if (type == "ping") {
-                    String res = "{ \"result\":\"OK\", \"pingid\":\"";
+                    String res = "{ \"type\": \"pingresult\", \"result\":\"OK\", \"pingid\":\"";
                     res += (const char*)(root["pingid"]);
                     res += "\" }";
-                    webSocket->sendTXT(num, res);
+                    send(res);
                 } else if (type == "switch") {
                     // Serial.println("switch!");
-                    webSocket->sendTXT(num, "{ \"result\":\"Doing\" }");
-                    sink->switchRelay(atoi(root["id"]), root["on"] == "true");
-                    webSocket->sendTXT(num, "{ \"result\":\"OK\" }");
+                    bool sw = root["on"] == "true";
+                    uint32_t id = atoi(root["id"]);
+                    sink->switchRelay(id, sw);
+                    reportRelayState(id);
                 } else if (type == "firmware-update") {
                     sink->showMessage("Update");
                     t_httpUpdate_return ret = ESPhttpUpdate.update("192.168.121.38", 8080, "/esp8266/update");
@@ -177,11 +243,11 @@ void setup(Sink* _sink) {
                     switch(ret) {
                         case HTTP_UPDATE_FAILED:
                             Serial.println(String("[update] Update failed.") + ESPhttpUpdate.getLastErrorString());
-                            webSocket->sendTXT(num, "{ \"result\":\"Fail\", \"description\": \"" + ESPhttpUpdate.getLastErrorString() + "\" }");
+                            send("{ \"result\":\"Fail\", \"description\": \"" + ESPhttpUpdate.getLastErrorString() + "\" }");
                             break;
                         case HTTP_UPDATE_NO_UPDATES:
                             Serial.println("[update] Update no Update.");
-                            webSocket->sendTXT(num, "{ \"result\":\"No update\" }");
+                            send("{ \"result\":\"No update\" }");
                             break;
                         case HTTP_UPDATE_OK:
                             Serial.println("[update] Update ok."); // may not called we reboot the ESP
@@ -201,22 +267,25 @@ void setup(Sink* _sink) {
                     // 
                     sink->setAdditionalInfo(root["text"]);
                 } else if (type == "reboot") {
+                    debugPrint("Let's reboot self");
                     sink->reboot();
                 }
                 break;
             }
             case WStype_BIN: {
-                // Serial.printf("[%u] get binary length: %u\n", num, length);
+                // Serial.printf("[%u] get binary length: %u\n", length);
                 // hexdump(payload, length);
                 debugPrint("Received binary packet of size " + String(length, DEC));
 
                 // send message to client
-                // webSocket.sendBIN(num, payload, length);
+                // webSocketClient.sendBIN(payload, length);
                 break;
             }
         }
-    });
-    webSocket->begin();
+    };
+
+    webSocketClient->onEvent(wsHandler);
+    webSocketClient->begin(websocketServer._value.c_str(), websocketPort._value.toInt(), "/esp");
 
     setupServer.reset(new AsyncWebServer(80));
     setupServer->on("/http_settup", [](AsyncWebServerRequest *request) {
@@ -243,7 +312,11 @@ void setup(Sink* _sink) {
         }
     });
     setupServer->on("/", [](AsyncWebServerRequest *request) {
-        String content = "<!DOCTYPE HTML>\r\n<html><body>";
+        String content = "<!DOCTYPE HTML>\r\n<html>";
+        content += "<head>";
+        content += "<meta http-equiv=\"content-type\" content=\"text/html; charset=UTF-8\">";
+        content += "</head>";
+        content += "<body>";
         content += "<p>";
         content += "<form method='get' action='http_settup'>";
         for (DevParam* d : devParams) {
@@ -307,7 +380,7 @@ int lastConnected = millis();
 
 void loop() {
     ArduinoOTA.handle();
-    webSocket->loop();
+    webSocketClient->loop();
 
     if (millis() % 1000 == 0) {
         // Set brightness if saved
@@ -326,9 +399,10 @@ void loop() {
 } // namespace
 
 void debugPrint(const String& str) {
-  if (sceleton::webSocket.get()) {
-    String toSend;
-    toSend = "{ \"type\": \"log\", \"val\": \"" + str + "\" }";
-    sceleton::webSocket->broadcastTXT(toSend.c_str(), toSend.length());
-  }
+    if (sceleton::webSocketClient.get() != NULL) {
+        String toSend;
+        toSend = "{ \"type\": \"log\", \"val\": \"" + str + "\" }";
+
+        sceleton::send(toSend);
+    }
 }
