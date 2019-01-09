@@ -126,7 +126,8 @@ void setup(Sink* _sink) {
 
     if (wifiName._value.length() > 0 && wifiPwd._value.length() > 0) {
         WiFi.mode(WIFI_STA);
-        WiFi.hostname("ESP8266_" + deviceName._value);
+        WiFi.setAutoReconnect(true);
+        WiFi.hostname("ESP_" + deviceName._value);
         WiFi.begin(wifiName._value.c_str(), wifiPwd._value.c_str());
         WiFi.waitForConnectResult();
     }
@@ -236,6 +237,13 @@ void setup(Sink* _sink) {
                     uint32_t id = atoi(root["id"]);
                     sink->switchRelay(id, sw);
                     reportRelayState(id);
+                } else if (type == "setProp") {
+                    for (DevParam* d : devParams) {
+                        if (String(d->_name) == root["prop"]) {
+                            d->_value = (const char*)(root["value"]);
+                            d->save();
+                        }
+                    }
                 } else if (type == "firmware-update") {
                     sink->showMessage("Update");
                     t_httpUpdate_return ret = ESPhttpUpdate.update("192.168.121.38", 8080, "/esp8266/update");
@@ -330,8 +338,12 @@ void setup(Sink* _sink) {
                 content += "' length=32/><br/>";
         }
         content += "<input type='submit'></form>";
+        content += "<form action='/reboot'><input type='submit' value='Reboot'/></form>";
         content += "</html>";
         request->send(200, "text/html", content);  
+    });
+    setupServer->on("/reboot", [](AsyncWebServerRequest *request) {
+        sink->reboot();
     });
     setupServer->onNotFound([](AsyncWebServerRequest *request) {
         request->send(404, "text/plain", "Not found: " + request->url());

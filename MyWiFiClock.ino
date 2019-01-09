@@ -325,6 +325,7 @@ WiFiClient client;
 
 long lastWeight = 0;
 uint32_t lastWeightSent = 0;
+uint32_t wrongTempValueReceivedCnt = 0;
 
 void loop() {
   if (interruptCounter > 0) {
@@ -369,14 +370,30 @@ void loop() {
       oneWire->reset();
       oneWire->select(deviceAddress);
       oneWire->write(0xBE);                      //Считывание значения с датчика
-      uint32_t temp = (oneWire->read() << 3 | oneWire->read() << 11); //Принимаем два байта температуры
-      float val = (float) temp * 0.0078125;
-      // Serial.println("Temp " + String(val));
-      String toSend = String("{ \"type\": \"temp\", ") + 
-        "\"value\": "  + String(val)  + ", " +  
-        "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
-        "}";
-      sceleton::send(toSend);
+      uint32_t byte1 = oneWire->read();
+      uint32_t byte2 = oneWire->read();
+      if (byte1 == 0xff && byte2 == 0xff) {
+        wrongTempValueReceivedCnt++;
+        if (wrongTempValueReceivedCnt % 10 == 0) {
+          debugPrint("Wrong temp: " + String(wrongTempValueReceivedCnt, DEC));
+        }
+        if (wrongTempValueReceivedCnt == 40) {
+          ESP.reset();
+        }
+      } else {
+        wrongTempValueReceivedCnt = 0;
+        uint32_t temp = (byte1 << 3 | byte2 << 11); //Принимаем два байта температуры
+        float val = (float) temp * 0.0078125;
+
+        // debugPrint("Temp: " + String(byte1, HEX) + " " + String(byte2, HEX) + " -> " + String(val));
+
+        // Serial.println("Temp " + String(val));
+        String toSend = String("{ \"type\": \"temp\", ") + 
+          "\"value\": "  + String(val)  + ", " +  
+          "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+          "}";
+        sceleton::send(toSend);
+      }
 
       nextRead = ULONG_MAX;
     }
@@ -521,8 +538,8 @@ void loop() {
       }
 
       if (recognized == NULL) {
-        debugPrint(decoded);
-        debugPrint(intervals);
+        // debugPrint(decoded);
+        // debugPrint(intervals);
       } else {
         if (millis() - lastCanonRemoteCmd > 200) {
           lastCanonRemoteCmd = millis();
