@@ -82,6 +82,15 @@
             }
         },
         {
+            "label": "run_lcd_test",
+            "type": "shell",
+            "command": "${workspaceRoot}/out/lcdtest.out",
+            "dependsOn": [
+                "build"
+            ],
+            "problemMatcher": []
+        },
+        {
             "label": "run_date_test",
             "type": "shell",
             "command": "${workspaceRoot}/out/dateTest.out",

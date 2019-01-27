@@ -35,6 +35,33 @@ const WSTR monthes[] = {
     L"декабря"
 };
 
+const wchar_t BIG_NUM_SYM = 0xE010;
+
+const uint8_t* symbolPtrOrNull(wchar_t symbol) {
+    int fontItem = fontUA[0];
+    int unicodeSym = symbol & 0xffff;
+    if (unicodeSym >= 0x410 && unicodeSym < 0x450) {
+        unicodeSym = unicodeSym - 0x410 + 0xa0;
+    } else if ((unicodeSym >= BIG_NUM_SYM) && (unicodeSym <= (0x10 + BIG_NUM_SYM))) {
+        unicodeSym = (unicodeSym - BIG_NUM_SYM) + 270 - 0x20; // Big numbers
+        // printf("%d\n", unicodeSym);
+    } else if (unicodeSym == 0x401) {
+        unicodeSym = 0x100 - 0x20; // Ё
+    } else if (unicodeSym == 0x451) {
+        unicodeSym = 0x101 - 0x20; // ё
+    } else if (unicodeSym == 0xE000) {
+        unicodeSym = 0x102 - 0x20; // Speaker
+    } else {
+        unicodeSym = unicodeSym - 0x20;
+    }
+
+    if (unicodeSym >= 0 && unicodeSym < (sizeof(fontUA) - 1)/fontItem) {
+        return fontUA + 1 + unicodeSym*fontItem;
+    }
+    return NULL;
+}
+
+
 class Figure {
 public:
     virtual void pixels(std::function<void(int, int)> acceptor) const = 0;
@@ -54,6 +81,27 @@ public:
         for (int xx = x; xx < x + w; ++xx) {
             for (int yy = y; yy < y + h; ++yy) {
                 acceptor(xx, yy);
+            }
+        }
+    }
+};
+
+class Bitmask8x4 : public Figure {
+private:
+    const uint8_t* symbol;
+public:
+    Bitmask8x4(const wchar_t ch) {
+        symbol = symbolPtrOrNull(ch);
+    }
+
+    virtual void pixels(std::function<void(int, int)> acceptor) const {
+        int symbolW = *symbol & 0xff;
+                
+        for (int x = 0; x < symbolW; ++x) {
+            uint8_t data = symbol[1 + x];
+            for (int y = 0; y < 8; ++y) {
+                if ((data >> y) & 1)
+                    acceptor(symbolW - x, y);
             }
         }
     }
@@ -263,27 +311,6 @@ public:
         }
     };
 
-    const uint8_t* symbolPtrOrNull(wchar_t symbol) {
-        int fontItem = fontUA[0];
-        int unicodeSym = symbol & 0xffff;
-        if (unicodeSym >= 0x410 && unicodeSym < 0x450) {
-            unicodeSym = unicodeSym - 0x410 + 0xa0;
-        } else if (unicodeSym == 0x401) {
-            unicodeSym = 0x100 - 0x20; // Ё
-        } else if (unicodeSym == 0x451) {
-            unicodeSym = 0x101 - 0x20; // ё
-        } else if (unicodeSym == 0xE000) {
-            unicodeSym = 0x102 - 0x20; // Speaker
-        } else {
-            unicodeSym = unicodeSym - 0x20;
-        }
-
-        if (unicodeSym >= 0 && unicodeSym < (sizeof(fontUA) - 1)/fontItem) {
-            return fontUA + 1 + unicodeSym*fontItem;
-        }
-        return NULL;
-    }
-
     int getStrWidth(const WSTR* strs, int strsCnt) {
         int w = 0;
         for (;strsCnt > 0; --strsCnt, ++strs) {
@@ -338,7 +365,7 @@ public:
                 w += symbolW + 1;
             }
         }
-        return w;        
+        return w;
     }
 
     void showTuningMsg(const char* utf8str) {
@@ -410,16 +437,20 @@ public:
         TimeComponent nextNextSecs((seconds + 2) % 60);
 
         clear();
-        // Hours
-        for(int n = 0; n < 2; n++) {
-            set(width() - 1 - (n+1)*6, 0, 
-                Bitmask(midNumbers[hours.charAt(n) - '0']), true);
-        }
+
         // Mins
-        for(int n = 0; n < 2; n++) {
-            set(18 - (n+1)*6, 0, 
-                Bitmask(midNumbers[mins.charAt(n) - '0']), true);
-        }
+        // mins.charAt(n) - '0'
+        set(10, 0, Bitmask8x4(BIG_NUM_SYM + (mins.charAt(1) - '0')), true);
+        set(15, 0, Bitmask8x4(BIG_NUM_SYM + (mins.charAt(0) - '0')), true);
+
+        // Hours
+        /* hours.charAt(n) - '0'*/
+        set(22, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(1) - '0')), true);
+        set(27, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(0) - '0')), true);
+
+        bool dots = millisSince1200 % 1000 > 500;
+        set(21, 2, dots);
+        set(21, 5, dots);
 
         int movingTimeUs = 1000 / 4; // Period of time to do seconds moving transition
         int smallFontHeight = 6;

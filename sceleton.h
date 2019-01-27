@@ -104,6 +104,8 @@ DevParam* devParams[] = {
     &relayNames
 }; 
 Sink* sink = new Sink();
+long lastReceived = millis();
+long reportedGoingToReconnect = millis();
 
 void reportRelayState(uint32_t id) {
     send("{ \"type\": \"relayState\", \"id\": " + String(id, DEC) + ", \"value\":" + (sink->relayState(id) ? "true" : "false") + " }");
@@ -224,6 +226,7 @@ void setup(Sink* _sink) {
                 }
 
                 const JsonObject &root = jsonBuffer.as<JsonObject>();
+                lastReceived = millis();
 
                 String type = root[typeKey];
                 if (type == "ping") {
@@ -405,6 +408,15 @@ void loop() {
         }
     } else {
         lastConnected = millis();
+    }
+
+    if (millis() - lastReceived > 10000) {
+        if (reportedGoingToReconnect <= lastReceived) {
+            sink->showMessage("10 секунд без связи с сервером, перезагружаемся");
+            reportedGoingToReconnect = millis();
+        }
+    } else if (millis() - lastReceived > 16000) {
+        ESP.reset();
     }
 }
 
