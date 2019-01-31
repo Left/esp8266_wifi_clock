@@ -36,15 +36,21 @@ const WSTR monthes[] = {
 };
 
 const wchar_t BIG_NUM_SYM = 0xE010;
+const wchar_t MIDDLE_NUM_SYM = 0xE020;
+const wchar_t TINY_NUM_SYM = 0xE030;
 
 const uint8_t* symbolPtrOrNull(wchar_t symbol) {
     int fontItem = fontUA[0];
     int unicodeSym = symbol & 0xffff;
     if (unicodeSym >= 0x410 && unicodeSym < 0x450) {
         unicodeSym = unicodeSym - 0x410 + 0xa0;
-    } else if ((unicodeSym >= BIG_NUM_SYM) && (unicodeSym <= (0x10 + BIG_NUM_SYM))) {
+    } else if ((unicodeSym >= BIG_NUM_SYM) && (unicodeSym < (10 + BIG_NUM_SYM))) {
         unicodeSym = (unicodeSym - BIG_NUM_SYM) + 270 - 0x20; // Big numbers
         // printf("%d\n", unicodeSym);
+    } else if ((unicodeSym >= MIDDLE_NUM_SYM) && (unicodeSym < (10 + MIDDLE_NUM_SYM))) {
+        unicodeSym = (unicodeSym - MIDDLE_NUM_SYM) + 280 - 0x20; // Middle numbers
+    } else if ((unicodeSym >= TINY_NUM_SYM) && (unicodeSym < (10 + TINY_NUM_SYM))) {
+        unicodeSym = (unicodeSym - TINY_NUM_SYM) + 290 - 0x20; // tiny numbers
     } else if (unicodeSym == 0x401) {
         unicodeSym = 0x100 - 0x20; // Ё
     } else if (unicodeSym == 0x451) {
@@ -440,17 +446,17 @@ public:
 
         // Mins
         // mins.charAt(n) - '0'
-        set(10, 0, Bitmask8x4(BIG_NUM_SYM + (mins.charAt(1) - '0')), true);
-        set(15, 0, Bitmask8x4(BIG_NUM_SYM + (mins.charAt(0) - '0')), true);
+        set(7, 0, Bitmask8x4(BIG_NUM_SYM + (mins.charAt(1) - '0')), true);
+        set(13, 0, Bitmask8x4(BIG_NUM_SYM + (mins.charAt(0) - '0')), true);
 
         // Hours
         /* hours.charAt(n) - '0'*/
-        set(22, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(1) - '0')), true);
-        set(27, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(0) - '0')), true);
+        set(21, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(1) - '0')), true);
+        set(27, 0, Bitmask8x4(MIDDLE_NUM_SYM + (hours.charAt(0) - '0')), true);
 
         bool dots = millisSince1200 % 1000 > 500;
-        set(21, 2, dots);
-        set(21, 5, dots);
+        set(20, 2, dots);
+        set(20, 5, dots);
 
         int movingTimeUs = 1000 / 4; // Period of time to do seconds moving transition
         int smallFontHeight = 6;
@@ -463,9 +469,9 @@ public:
                 y = 0;
             }
 
-            invert(n*4 - 5, y, Bitmask(smallNumbers[secs.charAt(1-n) - '0']));
-            invert(n*4 - 5, y-smallFontHeight, Bitmask(smallNumbers[nextSecs.charAt(1-n) - '0']));
-            invert(n*4 - 5, y-smallFontHeight*2, Bitmask(smallNumbers[nextNextSecs.charAt(1-n) - '0']));
+            set(n*4 - 1, y, Bitmask8x4(TINY_NUM_SYM + (secs.charAt(1-n) - '0')), true);
+            set(n*4 - 1, y-smallFontHeight, Bitmask8x4(TINY_NUM_SYM + (nextSecs.charAt(1-n) - '0')), true);
+            set(n*4 - 1, y-smallFontHeight*2, Bitmask8x4(TINY_NUM_SYM + (nextNextSecs.charAt(1-n) - '0')), true);
 
             // printf("%s %s %s -> %d %ul\n", nextNextSecs.c_str(), secs.c_str(), nextSecs.c_str(), y, us); 
         }
