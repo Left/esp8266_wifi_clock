@@ -205,6 +205,10 @@ DeviceAddress deviceAddress;
 
 int interruptCounter = 0;
 
+uint32_t timeRetreivedInMs = 0;
+uint32_t initialUnixTime = 0;
+uint32_t timeRequestedAt = 0;
+
 void handleInterrupt() {
   interruptCounter++;
 }
@@ -268,6 +272,11 @@ void setup() {
       }
     }
 
+    virtual void setTime(uint32_t unixTime) {
+        initialUnixTime = unixTime;
+        timeRetreivedInMs = millis();
+    }
+
     virtual void reboot() {
        ESP.restart();      
     }
@@ -310,10 +319,6 @@ void setup() {
 
 unsigned long oldMicros = micros();
 
-uint32_t timeRetreivedInMs = 0;
-uint32_t initialUnixTime = 0;
-uint32_t timeRequestedAt = 0;
-
 uint16_t hours = 0;
 uint16_t mins = 0;
 uint64_t nowMs = 0;
@@ -347,7 +352,7 @@ void loop() {
   if (sceleton::hasHX711._value == "true" && millis() % 50 == 0) {
     // Serial.println();
     long val = hx711->read();
-    if (lastWeight == 0 || abs(lastWeight - val) > 500 || (millis() - lastWeightSent) > 1000) {
+    if (lastWeight == 0 || abs(lastWeight - val) > 500 || (millis() - lastWeightSent) > 200) {
       String toSend = String("{ \"type\": \"weight\", ") + 
         "\"value\": "  + String(val, DEC)  + ", " +  
         "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  

@@ -20,6 +20,7 @@ public:
     virtual void switchRelay(uint32_t id, bool val) {}
     virtual boolean relayState(uint32_t id) { return false; } 
     virtual void setBrightness(int percents) {}
+    virtual void setTime(uint32_t unixTime) {}
     virtual void reboot() {}
 };
 
@@ -268,6 +269,8 @@ void setup(Sink* _sink) {
                     sink->showMessage(root["text"]);
                 } else if (type == "tune") {
                     sink->showTuningMsg(root["text"]);
+                } else if (type == "unixtime") {
+                    sink->setTime(root["value"].as<int>());
                 } else if (type == "brightness") {
                     int val = root["value"].as<int>();
                     val = std::max(std::min(val, 100), 0);

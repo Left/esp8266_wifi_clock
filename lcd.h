@@ -73,6 +73,23 @@ public:
     virtual void pixels(std::function<void(int, int)> acceptor) const = 0;
 };
 
+class OnePixelAt : public Figure {
+    const Figure& _f;
+    int _num;
+public:
+
+    OnePixelAt(const Figure& f, int num) : _f(f), _num(num) {}
+
+    virtual void pixels(std::function<void(int, int)> acceptor) const {
+        int num = _num;
+        _f.pixels([&](int x, int y) {
+            if (num-- == 0) {
+                acceptor(x, y);
+            }
+        });
+    }
+};
+
 class Rectangle : public Figure {
 public:
     const int x;
@@ -235,6 +252,8 @@ private:
     const uint32_t _blinkTime = 30;
 
 public:
+    bool _showDay = true;
+
     static const int secInUs = 1000000;
 
     LcdScreen() {
@@ -410,7 +429,7 @@ public:
             return;
         } 
 
-        if (millisSince1200 / 1000 % 60 > 55 && !_rollingMsg.isSet()) {
+        if (millisSince1200 / 1000 % 60 > 55 && _showDay) {
             date::RTC rtc = {0};
             date::epoc2rtc(daysSince1970, rtc);
             wchar_t yearStr[10] = { 0 };
@@ -451,12 +470,18 @@ public:
 
         // Hours
         /* hours.charAt(n) - '0'*/
-        set(21, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(1) - '0')), true);
-        set(27, 0, Bitmask8x4(MIDDLE_NUM_SYM + (hours.charAt(0) - '0')), true);
+        set(20, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(1) - '0')), true);
+        set(26, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(0) - '0')), true);
 
-        bool dots = millisSince1200 % 1000 > 500;
-        set(20, 2, dots);
-        set(20, 5, dots);
+        int dotframe = 100;
+        // int dots = (millisSince1200 % (dotframe*8)) / dotframe;
+        // int dots2 = (millisSince1200 % (dotframe*8)) / dotframe;
+        if (millisSince1200 % 1000 < 200) {
+            set(19, 1, OnePixelAt(Rectangle(0, 0, 2, 2), millisSince1200 % 1000 / 50), true);
+            set(19, 5, OnePixelAt(Rectangle(0, 0, 2, 2), millisSince1200 % 1000 / 50), true);
+        }
+        // set(19, 1, dots == 0); set(20, 1, dots == 1); set(19, 2, dots == 2); set(20, 2, dots == 3);
+        // set(19, 5, dots == 0); set(20, 5, dots == 1); set(19, 6, dots == 2); set(20, 6, dots == 3);
 
         int movingTimeUs = 1000 / 4; // Period of time to do seconds moving transition
         int smallFontHeight = 6;

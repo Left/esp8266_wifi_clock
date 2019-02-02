@@ -12,9 +12,10 @@ int main(int argc, char const *argv[]) {
     putp(tigetstr((char *)"clear"));
 
     LcdScreen screen;
+    screen._showDay = false;
     // screen.showMessage("ЁЁЁёёёЁЁЁёёё!");
 
-    for (int ii = 0; ii < 16000; ++ii) {
+    for (int ii = 0; ii < 1600; ++ii) {
         // Move cursor to top left
         putp( tparm( tigetstr((char *)"cup" ), 0, 0, 0, 0, 0, 0, 0, 0, 0 ) );
         
@@ -49,7 +50,7 @@ int main(int argc, char const *argv[]) {
 
         printf("Micros: %u\n", micros());
 
-        usleep(1000); // will sleep for 1 ms
+        usleep(10000); // will sleep for 10 ms
     }
 
     return 0;
