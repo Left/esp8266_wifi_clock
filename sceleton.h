@@ -50,6 +50,9 @@ const char* firmwareVersion = "00.19";
 std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsClient> webSocketClient;
 
+long vccVal = 0;
+int rebootAt = 0x7FFFFFFF;
+
 void send(const String& toSend) {
     webSocketClient->sendTXT(toSend.c_str(), toSend.length());
 }
@@ -233,7 +236,9 @@ void setup(Sink* _sink) {
                 if (type == "ping") {
                     String res = "{ \"type\": \"pingresult\", \"result\":\"OK\", \"pingid\":\"";
                     res += (const char*)(root["pingid"]);
-                    res += "\" }";
+                    res += "\", \"vcc\": ";
+                    res += String(vccVal, DEC);
+                    res += " }";
                     send(res);
                 } else if (type == "switch") {
                     // Serial.println("switch!");
@@ -349,7 +354,7 @@ void setup(Sink* _sink) {
         request->send(200, "text/html", content);  
     });
     setupServer->on("/reboot", [](AsyncWebServerRequest *request) {
-        sink->reboot();
+        rebootAt = millis() + 100;
     });
     setupServer->onNotFound([](AsyncWebServerRequest *request) {
         request->send(404, "text/plain", "Not found: " + request->url());
@@ -395,20 +400,24 @@ void setup(Sink* _sink) {
 }
 
 int lastConnected = millis();
+int lastEachSecond = millis() / 1000;
 
 void loop() {
     ArduinoOTA.handle();
     webSocketClient->loop();
 
-    if (millis() % 1000 == 0) {
+    if (millis() / 1000 != lastEachSecond) {
+        lastEachSecond = millis() / 1000;
         // Set brightness if saved
         sink->setBrightness(brightness._value.toInt());
 
         if (WiFi.status() != WL_CONNECTED) {
             if (millis() - lastConnected > 30000) {
-                ESP.reset();
+                sink->reboot();
             }
         }
+
+        vccVal = ESP.getVcc();
     } else {
         lastConnected = millis();
     }
@@ -419,7 +428,11 @@ void loop() {
             reportedGoingToReconnect = millis();
         }
     } else if (millis() - lastReceived > 16000) {
-        ESP.reset();
+        sink->reboot();
+    }
+
+    if (rebootAt < millis()) {
+        sink->reboot();
     }
 }
 

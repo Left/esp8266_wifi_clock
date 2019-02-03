@@ -251,6 +251,8 @@ private:
     uint32_t _blinkStart = 0;
     const uint32_t _blinkTime = 30;
 
+    uint32_t _showDayMin = 0;
+
 public:
     bool _showDay = true;
 
@@ -429,7 +431,8 @@ public:
             return;
         } 
 
-        if (millisSince1200 / 1000 % 60 > 55 && _showDay) {
+        if (millisSince1200 / 1000 % 60 > 55 && _showDay && (_showDayMin != millisSince1200 / 1000 / 60)) {
+            _showDayMin = millisSince1200 / 1000 / 60;
             date::RTC rtc = {0};
             date::epoc2rtc(daysSince1970, rtc);
             wchar_t yearStr[10] = { 0 };

@@ -278,7 +278,13 @@ void setup() {
     }
 
     virtual void reboot() {
-       ESP.restart();      
+        screen.clear();
+        if (screenController != NULL) {
+          screenController->refreshAll();
+        }
+
+        ESP.restart(); 
+        // ESP.reset();    
     }
   };
 
@@ -307,14 +313,14 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(D7), handleInterrupt, CHANGE);
   }
 
-  screen.showMessage("Инициализация...");
+  // screen.showMessage("Инициализация...");
 
   udp.begin(localPort);
 
   WiFi.hostByName(ntpServerName, timeServerIP);
 
   // sendHttp("/clock_init");
-
+  
 }
 
 unsigned long oldMicros = micros();
@@ -383,7 +389,7 @@ void loop() {
           debugPrint("Wrong temp: " + String(wrongTempValueReceivedCnt, DEC));
         }
         if (wrongTempValueReceivedCnt == 40) {
-          ESP.reset();
+          sceleton::sink->reboot();
         }
       } else {
         wrongTempValueReceivedCnt = 0;
@@ -432,8 +438,10 @@ void loop() {
       }
     }
   } else {
-    const wchar_t* getTime = L"  Получаем время с сервера...  ";
-    screen.printStr((micros() / 1000 / 50) % screen.getStrWidth(getTime), 0, getTime);
+    // const wchar_t* getTime = L"  Получаем время с сервера...  ";
+    // screen.printStr((micros() / 1000 / 30) % screen.getStrWidth(getTime), 0, getTime);
+    screen.clear();
+    screen.set(0, 0, OnePixelAt(Rectangle(0, 0, 32, 8), (millis() / 30) % (32*8)), true);
     if (screenController != NULL) {
       screenController->refreshAll();
     }
