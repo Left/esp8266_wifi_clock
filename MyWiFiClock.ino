@@ -283,8 +283,8 @@ void setup() {
           screenController->refreshAll();
         }
 
-        ESP.restart(); 
-        // ESP.reset();    
+        ESP.restart();
+        ESP.reset();    
     }
   };
 
@@ -388,7 +388,7 @@ void loop() {
         if (wrongTempValueReceivedCnt % 10 == 0) {
           debugPrint("Wrong temp: " + String(wrongTempValueReceivedCnt, DEC));
         }
-        if (wrongTempValueReceivedCnt == 40) {
+        if (wrongTempValueReceivedCnt == 400) {
           sceleton::sink->reboot();
         }
       } else {

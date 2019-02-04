@@ -128,7 +128,7 @@ void setup(Sink* _sink) {
             d->_value = readVal;
         }
     }
-    Serial.println("Initialized in " + String(millis() - was, DEC));
+    // Serial.println("Initialized in " + String(millis() - was, DEC));
 
     if (wifiName._value.length() > 0 && wifiPwd._value.length() > 0) {
         WiFi.mode(WIFI_STA);
@@ -140,7 +140,7 @@ void setup(Sink* _sink) {
 
     if (WiFi.status() == WL_CONNECTED) {
         IPAddress ip = WiFi.localIP();
-        Serial.println("Connected to WiFi " + ip.toString());
+        // Serial.println("Connected to WiFi " + ip.toString());
     } else {
         WiFi.mode(WIFI_STA);
         WiFi.disconnect();
@@ -174,6 +174,9 @@ void setup(Sink* _sink) {
                 break;
             }
             case WStype_CONNECTED: {
+                // Serial.println("Connected to server");
+                lastReceived = millis();
+
                 String devParamsStr = "{ ";
                 bool first = true;
                 for (DevParam* d : devParams) {
@@ -228,9 +231,9 @@ void setup(Sink* _sink) {
                     send("{ \"errorMsg\":\"Failed to parse JSON\" }");
                     return;
                 }
+                lastReceived = millis();
 
                 const JsonObject &root = jsonBuffer.as<JsonObject>();
-                lastReceived = millis();
 
                 String type = root[typeKey];
                 if (type == "ping") {
@@ -304,6 +307,7 @@ void setup(Sink* _sink) {
     };
 
     webSocketClient->onEvent(wsHandler);
+    // Serial.println("Connecting to server");
     webSocketClient->begin(websocketServer._value.c_str(), websocketPort._value.toInt(), "/esp");
 
     setupServer.reset(new AsyncWebServer(80));
@@ -411,13 +415,15 @@ void loop() {
         // Set brightness if saved
         sink->setBrightness(brightness._value.toInt());
 
+/*
         if (WiFi.status() != WL_CONNECTED) {
             if (millis() - lastConnected > 30000) {
                 sink->reboot();
             }
         }
+*/
 
-        vccVal = ESP.getVcc();
+        // vccVal = ESP.getVcc();
     } else {
         lastConnected = millis();
     }
@@ -427,11 +433,12 @@ void loop() {
             sink->showMessage("10 секунд без связи с сервером, перезагружаемся");
             reportedGoingToReconnect = millis();
         }
-    } else if (millis() - lastReceived > 16000) {
-        sink->reboot();
+    }
+    if (millis() - lastReceived > 16000) {
+        rebootAt = millis();
     }
 
-    if (rebootAt < millis()) {
+    if (rebootAt <= millis()) {
         sink->reboot();
     }
 }
