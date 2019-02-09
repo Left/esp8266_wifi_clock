@@ -32,6 +32,7 @@ unsigned long sendNTPpacket(IPAddress& address);
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udp;
 
+boolean screenEnaled = true;
 LcdScreen screen;
 MAX72xx* screenController;
 
@@ -252,9 +253,9 @@ void setup() {
       relay.write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
     }
 
-    virtual void showMessage(const char* dd) {
+    virtual void showMessage(const char* dd, int cnt = 1) {
       // 
-      screen.showMessage(dd);
+      screen.showMessage(dd, cnt);
     }
 
     virtual void showTuningMsg(const char* dd) {
@@ -278,6 +279,7 @@ void setup() {
     }
 
     virtual void reboot() {
+        Serial.println("Rebooting");
         screen.clear();
         if (screenController != NULL) {
           screenController->refreshAll();
@@ -285,6 +287,14 @@ void setup() {
 
         ESP.restart();
         ESP.reset();    
+    }
+
+    virtual void enableScreen(const boolean enabled) {
+      screenEnaled = enabled;
+    }
+
+    virtual boolean screenEnabled() { 
+      return screenEnaled; 
     }
   };
 
@@ -328,7 +338,6 @@ unsigned long oldMicros = micros();
 uint16_t hours = 0;
 uint16_t mins = 0;
 uint64_t nowMs = 0;
-boolean sleeps = false;
 
 const int updateTimeEachSec = 600; // By default, update time each 600 seconds
 
@@ -388,7 +397,8 @@ void loop() {
         if (wrongTempValueReceivedCnt % 10 == 0) {
           debugPrint("Wrong temp: " + String(wrongTempValueReceivedCnt, DEC));
         }
-        if (wrongTempValueReceivedCnt == 400) {
+        if (wrongTempValueReceivedCnt == 40) {
+          Serial.println("Rebooting because of bad temp");
           sceleton::sink->reboot();
         }
       } else {
@@ -414,36 +424,30 @@ void loop() {
   testCntr++;
 
   screen.clear();
-  boolean wasSleeping = sleeps;
 
-  if (timeRetreivedInMs) {
-    updateTime();
-    if (!sleeps) {
-      screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
+  if (sceleton::initializedWiFi) {
+    if (timeRetreivedInMs) {
+      updateTime();
+      if (screenEnaled) {
+        screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
+      }
 
       if (screenController != NULL) {
         screenController->refreshAll();
       }
-    }
-
-    // int m = (hours*100 + mins);
-    // sleeps = m > 2330 || m < 540; // From 22:30 to 5:30 - do not show screen
-
-    if (sleeps) {
-      if (!wasSleeping) {
-        debugPrint("Falling asleep");
-      }
+    } else {
+      // const wchar_t* getTime = L"  Получаем время с сервера...  ";
+      // screen.printStr((micros() / 1000 / 30) % screen.getStrWidth(getTime), 0, getTime);
+      screen.clear();
+      screen.set(0, 0, OnePixelAt(Rectangle(0, 0, 32, 8), (millis() / 30) % (32*8)), true);
       if (screenController != NULL) {
         screenController->refreshAll();
       }
     }
   } else {
-    // const wchar_t* getTime = L"  Получаем время с сервера...  ";
-    // screen.printStr((micros() / 1000 / 30) % screen.getStrWidth(getTime), 0, getTime);
-    screen.clear();
-    screen.set(0, 0, OnePixelAt(Rectangle(0, 0, 32, 8), (millis() / 30) % (32*8)), true);
+    screen.showTime(0, millis() % 1000);
     if (screenController != NULL) {
-      screenController->refreshAll();
+        screenController->refreshAll();
     }
   }
 

@@ -244,6 +244,7 @@ private:
     uint32_t nextShowDateInMs = millis() + 5000;
 
     MsgToShow _rollingMsg;
+    int _rollingMsgCount;
     MsgToShow _tuningMsgNow;
     MsgToShow _additionalInfo;
 
@@ -399,7 +400,8 @@ public:
         _tuningMsgNow.set(utf8str);
     }
 
-    void showMessage(const char* utf8str) {
+    void showMessage(const char* utf8str, int cnt = 1) {
+        _rollingMsgCount = cnt;
         _rollingMsg.set(utf8str);
     }
 
@@ -426,7 +428,12 @@ public:
             int32_t extraTime = (showedTime / _scrollSpeed) - strW;
             printStr(extraTime < 0 ? ((showedTime / _scrollSpeed) % strW) : strW, 0, _rollingMsg.c_str());
             if (extraTime > 30) {
-                _rollingMsg.clear();
+                _rollingMsgCount--;
+                if (_rollingMsgCount <= 0) {
+                    _rollingMsg.clear();
+                } else {
+                    _rollingMsg.strStartAt = millis();
+                }
             }
             return;
         } 

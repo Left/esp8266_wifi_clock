@@ -14,7 +14,7 @@ namespace sceleton {
 
 class Sink {
 public:
-    virtual void showMessage(const char* s) {}
+    virtual void showMessage(const char* s, int cnt = 1) {}
     virtual void showTuningMsg(const char* s) {}
     virtual void setAdditionalInfo(const char* s) {}
     virtual void switchRelay(uint32_t id, bool val) {}
@@ -22,6 +22,8 @@ public:
     virtual void setBrightness(int percents) {}
     virtual void setTime(uint32_t unixTime) {}
     virtual void reboot() {}
+    virtual void enableScreen(const boolean enabled) {}
+    virtual boolean screenEnabled() { return false; }
 };
 
 void stringToFile(const String& fileName, const String& value) {
@@ -45,7 +47,7 @@ String fileToString(const String& fileName) {
 
 const String typeKey("type");
 
-const char* firmwareVersion = "00.19";
+const char* firmwareVersion = "00.20";
 
 std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsClient> webSocketClient;
@@ -108,6 +110,7 @@ DevParam* devParams[] = {
     &relayNames
 }; 
 Sink* sink = new Sink();
+boolean initializedWiFi = false;
 long lastReceived = millis();
 long reportedGoingToReconnect = millis();
 
@@ -128,7 +131,7 @@ void setup(Sink* _sink) {
             d->_value = readVal;
         }
     }
-    // Serial.println("Initialized in " + String(millis() - was, DEC));
+    Serial.println("Initialized in " + String(millis() - was, DEC));
 
     if (wifiName._value.length() > 0 && wifiPwd._value.length() > 0) {
         WiFi.mode(WIFI_STA);
@@ -140,7 +143,8 @@ void setup(Sink* _sink) {
 
     if (WiFi.status() == WL_CONNECTED) {
         IPAddress ip = WiFi.localIP();
-        // Serial.println("Connected to WiFi " + ip.toString());
+        initializedWiFi = true;
+        Serial.println("Connected to WiFi " + ip.toString());
     } else {
         WiFi.mode(WIFI_STA);
         WiFi.disconnect();
@@ -158,12 +162,14 @@ void setup(Sink* _sink) {
         String chidIp = String(ESP.getChipId(), HEX);
         String wifiAPName = ("ESP8266_Remote_") + chidIp;
         String wifiPwd = String("pwd") + chidIp;
-        WiFi.softAP(wifiAPName.c_str(), wifiPwd.c_str());
+        WiFi.softAP(wifiAPName.c_str()); // , wifiPwd.c_str()
 
         IPAddress accessIP = WiFi.softAPIP();
         Serial.println(String("ESP AccessPoint name       : ") + wifiAPName);
-        Serial.println(String("ESP AccessPoint password   : ") + wifiPwd);
+        // Serial.println(String("ESP AccessPoint password   : ") + wifiPwd);
         Serial.println(String("ESP AccessPoint IP address : ") + accessIP.toString());
+
+        sink->showMessage((String("WiFi: ") + wifiAPName + /*", password: " + wifiPwd + */ ", " + accessIP.toString()).c_str(), 0xffff);
     }
 
     webSocketClient.reset(new WebSocketsClient());
@@ -174,7 +180,7 @@ void setup(Sink* _sink) {
                 break;
             }
             case WStype_CONNECTED: {
-                // Serial.println("Connected to server");
+                Serial.println("Connected to server");
                 lastReceived = millis();
 
                 String devParamsStr = "{ ";
@@ -200,6 +206,7 @@ void setup(Sink* _sink) {
                     "\"firmware\":\"" + firmwareVersion + "\", " +
                     "\"afterRestart\": " + millis() + ", " + 
                     "\"devParams\": " + devParamsStr + ", " + 
+                    "\"screenEnabled\": " + sink->screenEnabled() + ", " + 
                     "\"deviceName\":\"" + sceleton::deviceName._value + "\"" + 
                     " }");
 
@@ -279,6 +286,10 @@ void setup(Sink* _sink) {
                     sink->showTuningMsg(root["text"]);
                 } else if (type == "unixtime") {
                     sink->setTime(root["value"].as<int>());
+                } else if (type == "screenEnable") {
+                    int val = root["value"].as<boolean>();
+                    sink->enableScreen(val);
+                    brightness.save();
                 } else if (type == "brightness") {
                     int val = root["value"].as<int>();
                     val = std::max(std::min(val, 100), 0);
@@ -403,43 +414,36 @@ void setup(Sink* _sink) {
     // Serial.println("ArduinoOTA.begin");
 }
 
-int lastConnected = millis();
 int lastEachSecond = millis() / 1000;
 
 void loop() {
-    ArduinoOTA.handle();
-    webSocketClient->loop();
+    if (initializedWiFi) {
+        ArduinoOTA.handle();
+        webSocketClient->loop();
+    }
 
     if (millis() / 1000 != lastEachSecond) {
         lastEachSecond = millis() / 1000;
         // Set brightness if saved
         sink->setBrightness(brightness._value.toInt());
 
-/*
-        if (WiFi.status() != WL_CONNECTED) {
-            if (millis() - lastConnected > 30000) {
-                sink->reboot();
+        // vccVal = ESP.getVcc();
+    }
+
+    if (initializedWiFi) {
+        if (millis() - lastReceived > 10000) {
+            if (reportedGoingToReconnect <= lastReceived) {
+                sink->showMessage("10 секунд без связи с сервером, перезагружаемся");
+                reportedGoingToReconnect = millis();
             }
         }
-*/
-
-        // vccVal = ESP.getVcc();
-    } else {
-        lastConnected = millis();
-    }
-
-    if (millis() - lastReceived > 10000) {
-        if (reportedGoingToReconnect <= lastReceived) {
-            sink->showMessage("10 секунд без связи с сервером, перезагружаемся");
-            reportedGoingToReconnect = millis();
+        if (millis() - lastReceived > 16000) {
+            rebootAt = millis();
         }
-    }
-    if (millis() - lastReceived > 16000) {
-        rebootAt = millis();
-    }
 
-    if (rebootAt <= millis()) {
-        sink->reboot();
+        if (rebootAt <= millis()) {
+            sink->reboot();
+        }
     }
 }
 
