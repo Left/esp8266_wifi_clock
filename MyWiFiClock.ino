@@ -7,7 +7,6 @@
 #include <IRutils.h>
 
 #include <WiFiUdp.h>
-#include <core_esp8266_waveform.h>
 #include <SoftwareSerial.h>
 
 #include "worklogic.h"
@@ -198,6 +197,8 @@ SoftwareSerial relay(D1, D0); // RX, TX
 
 OneWire* oneWire;
 
+#define ULONG_MAX 0xffffffff
+
 const long interval = 1000; // Request each second
 unsigned long nextRequest = millis();
 unsigned long nextRead = ULONG_MAX;
@@ -209,6 +210,7 @@ int interruptCounter = 0;
 uint32_t timeRetreivedInMs = 0;
 uint32_t initialUnixTime = 0;
 uint32_t timeRequestedAt = 0;
+uint32_t restartAt = ULONG_MAX;
 
 void handleInterrupt() {
   interruptCounter++;
@@ -278,15 +280,23 @@ void setup() {
         timeRetreivedInMs = millis();
     }
 
-    virtual void reboot() {
-        Serial.println("Rebooting");
-        screen.clear();
-        if (screenController != NULL) {
-          screenController->refreshAll();
-        }
+    int restartReportedAt = 0;
 
-        ESP.restart();
-        ESP.reset();    
+    virtual void reboot() {
+      if (restartAt - millis() >= 200) { 
+        if (restartReportedAt < millis()) {
+          restartReportedAt = millis() + 300;
+          Serial.println("Rebooting");
+          debugPrint("Rebooting");
+          screen.clear();
+          screen.showMessage("Restart", 20);
+          if (screenController != NULL) {
+            screenController->refreshAll();
+          }
+          Serial.println("ESP.reset planned");
+        }
+        restartAt = millis() + 200;
+      }
     }
 
     virtual void enableScreen(const boolean enabled) {
@@ -324,13 +334,11 @@ void setup() {
   }
 
   // screen.showMessage("Инициализация...");
+  if (sceleton::ntpTime._value == "true") {
+    udp.begin(localPort);
 
-  udp.begin(localPort);
-
-  WiFi.hostByName(ntpServerName, timeServerIP);
-
-  // sendHttp("/clock_init");
-  
+    WiFi.hostByName(ntpServerName, timeServerIP);
+  }  
 }
 
 unsigned long oldMicros = micros();
@@ -343,11 +351,19 @@ const int updateTimeEachSec = 600; // By default, update time each 600 seconds
 
 WiFiClient client;
 
+uint32_t lastWeighteningStarted = millis();
 long lastWeight = 0;
-uint32_t lastWeightSent = 0;
 uint32_t wrongTempValueReceivedCnt = 0;
 
 void loop() {
+  uint32_t st = millis();
+
+  if (restartAt < millis()) {
+    Serial.println("ESP.reset");
+    ESP.reset();
+    ESP.restart();
+  }
+
   if (interruptCounter > 0) {
     String toSend = String("{ \"type\": \"button\", ") + 
         "\"value\": " + (digitalRead(D7) == LOW ? "true" : "false") + ", " +  
@@ -364,18 +380,19 @@ void loop() {
     sendNTPpacket(timeServerIP); // send an NTP packet to a time server
   }
 
-  if (sceleton::hasHX711._value == "true" && millis() % 50 == 0) {
+  if (sceleton::hasHX711._value == "true" && (millis() - lastWeighteningStarted) > 100 && hx711->readyToSend()) {
+    lastWeighteningStarted = millis();
+
     // Serial.println();
     long val = hx711->read();
-    if (lastWeight == 0 || abs(lastWeight - val) > 500 || (millis() - lastWeightSent) > 200) {
-      String toSend = String("{ \"type\": \"weight\", ") + 
-        "\"value\": "  + String(val, DEC)  + ", " +  
-        "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
-        "}";
 
-      sceleton::send(toSend);
-      lastWeightSent = millis();
-    }
+    String toSend = String("{ \"type\": \"weight\", ") + 
+      "\"value\": "  + String(val, DEC)  + ", " +  
+      "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+      "}";
+
+    sceleton::send(toSend);
+
     lastWeight = val;
   }
 

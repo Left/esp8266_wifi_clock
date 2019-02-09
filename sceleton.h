@@ -160,13 +160,14 @@ void setup(Sink* _sink) {
 
         WiFi.mode(WIFI_AP);
         String chidIp = String(ESP.getChipId(), HEX);
-        String wifiAPName = ("ESP8266_Remote_") + chidIp;
+        String wifiAPName = ("ESP8266_") + chidIp;
         String wifiPwd = String("pwd") + chidIp;
-        WiFi.softAP(wifiAPName.c_str()); // , wifiPwd.c_str()
+        WiFi.softAP(wifiAPName.c_str(), wifiPwd.c_str());
+        // WiFi.softAPConfig(IPAddress(192, 168, 4, 22), IPAddress(192, 168, 4, 9), IPAddress(255, 255, 255, 0));
 
         IPAddress accessIP = WiFi.softAPIP();
         Serial.println(String("ESP AccessPoint name       : ") + wifiAPName);
-        // Serial.println(String("ESP AccessPoint password   : ") + wifiPwd);
+        Serial.println(String("ESP AccessPoint password   : ") + wifiPwd);
         Serial.println(String("ESP AccessPoint IP address : ") + accessIP.toString());
 
         sink->showMessage((String("WiFi: ") + wifiAPName + /*", password: " + wifiPwd + */ ", " + accessIP.toString()).c_str(), 0xffff);
@@ -177,6 +178,7 @@ void setup(Sink* _sink) {
         switch (type) {
             case WStype_DISCONNECTED: {
                 // Serial.printf("[%u] Disconnected!\n", num);
+                Serial.println("Disconnected from server");
                 break;
             }
             case WStype_CONNECTED: {
@@ -244,11 +246,9 @@ void setup(Sink* _sink) {
 
                 String type = root[typeKey];
                 if (type == "ping") {
-                    String res = "{ \"type\": \"pingresult\", \"result\":\"OK\", \"pingid\":\"";
+                    String res = "{ \"type\": \"pingresult\", \"pid\":\"";
                     res += (const char*)(root["pingid"]);
-                    res += "\", \"vcc\": ";
-                    res += String(vccVal, DEC);
-                    res += " }";
+                    res += "\" }";
                     send(res);
                 } else if (type == "switch") {
                     // Serial.println("switch!");
