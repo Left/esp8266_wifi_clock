@@ -289,11 +289,10 @@ void setup() {
           Serial.println("Rebooting");
           debugPrint("Rebooting");
           screen.clear();
-          screen.showMessage("Restart", 20);
+          screen.showTuningMsg("Ребут");
           if (screenController != NULL) {
             screenController->refreshAll();
           }
-          Serial.println("ESP.reset planned");
         }
         restartAt = millis() + 200;
       }

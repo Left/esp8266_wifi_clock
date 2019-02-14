@@ -4,7 +4,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "build",
+            "label": "build_lcd_test",
             "type": "shell",
             "command": "g++",
             "args": [
@@ -12,7 +12,7 @@
                 "${workspaceRoot}/out/lcdtest.out",
                 "-lcurses",
                 "-std=c++11",
-                "${workspaceRoot}/snippets/lcdtest.cpp"
+                "${workspaceRoot}/snippets/lcdtes-t.cpp"
             ],
             "options": {
                 "cwd": "${workspaceRoot}/snippets"
@@ -25,7 +25,8 @@
                 "echo": true,
                 "reveal": "always",
                 "focus": false,
-                "panel": "shared"
+                "panel": "dedicated",
+                "showReuseMessage": false
             },
             "problemMatcher": {
                 "owner": "cpp",
@@ -86,9 +87,16 @@
             "type": "shell",
             "command": "${workspaceRoot}/out/lcdtest.out",
             "dependsOn": [
-                "build"
+                "build_lcd_test"
             ],
-            "problemMatcher": []
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false
+            }
         },
         {
             "label": "run_date_test",

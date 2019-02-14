@@ -13,6 +13,8 @@ int main(int argc, char const *argv[]) {
 
     LcdScreen screen;
     screen._showDay = false;
+    screen.showMessage("Hello, it is a very-very-very-very long line");
+
     // screen.showMessage("ЁЁЁёёёЁЁЁёёё!");
 
     for (int ii = 0; ii < 1600; ++ii) {

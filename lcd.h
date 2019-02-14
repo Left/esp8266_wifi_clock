@@ -1,4 +1,5 @@
 #include <functional>
+#include <algorithm>
 
 #include "common.h"
 
@@ -169,14 +170,14 @@ public:
     }
 
     void clear() {
-        free(_msg);
-        _msg = NULL;
+        if (_msg != NULL) {
+            free(_msg);
+            _msg = NULL;
+        }
     }
 
     void set(const WSTR* ss, uint32_t count) {
-        if (_msg != NULL) {
-            free(_msg);
-        }
+        clear();
         uint32_t totalCnt = 0;
         for (int i = 0; i < count; ++i) {
             totalCnt += wcslen(ss[i]);
@@ -194,9 +195,7 @@ public:
     }
 
     void set(const char* utf8str) {
-        if (_msg != NULL) {
-            free(_msg);
-        }
+        clear();
         int maxSize = strlen(utf8str)*2;
         _msg = (WSTR_MUTABLE)malloc(maxSize + 2);
         memset(_msg, 0, maxSize + 2);
@@ -423,19 +422,28 @@ public:
         }
 
         if (_rollingMsg.isSet()) {
-            uint32_t showedTime = millis() - _rollingMsg.strStartAt;
+            int32_t waitBefore = 300;
+            int32_t extraTime = 300;
+            int32_t showedTime = millis() - _rollingMsg.strStartAt;
             int32_t strW = getStrWidth(_rollingMsg.c_str());
-            int32_t extraTime = (showedTime / _scrollSpeed) - strW;
-            printStr(extraTime < 0 ? ((showedTime / _scrollSpeed) % strW) : strW, 0, _rollingMsg.c_str());
-            if (extraTime > 30) {
-                _rollingMsgCount--;
-                if (_rollingMsgCount <= 0) {
-                    _rollingMsg.clear();
-                } else {
-                    _rollingMsg.strStartAt = millis();
-                }
+            int32_t timeToShow = ((strW - 32) * _scrollSpeed);
+            int32_t x = 0;
+            bool stop = false;
+            if (showedTime < waitBefore) {
+                x = 31;
+            } else if (showedTime < (waitBefore + timeToShow)) {
+                x = (showedTime - waitBefore) / _scrollSpeed + 32;
+            } else if (showedTime < (waitBefore + timeToShow + extraTime)) {
+                x = strW;
+            } else {
+                stop = true;
+                _rollingMsg.clear();
             }
-            return;
+
+            if (!stop) {
+                printStr(x, 0, _rollingMsg.c_str());
+                return;
+            }
         } 
 
         if (millisSince1200 / 1000 % 60 > 55 && _showDay && (_showDayMin != millisSince1200 / 1000 / 60)) {
