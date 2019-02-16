@@ -110,11 +110,11 @@ public:
     }
 };
 
-class Bitmask8x4 : public Figure {
+class CharacterBitmask : public Figure {
 private:
     const uint8_t* symbol;
 public:
-    Bitmask8x4(const wchar_t ch) {
+    CharacterBitmask(const wchar_t ch) {
         symbol = symbolPtrOrNull(ch);
     }
 
@@ -156,6 +156,7 @@ class MsgToShow {
     WSTR_MUTABLE _msg = NULL;
 public:
     int strStartAt = 0;
+    int _totalMsToShow = 0;
 
     WSTR c_str() {
         return _msg;
@@ -194,8 +195,9 @@ public:
         strStartAt = millis();
     }
 
-    void set(const char* utf8str) {
+    void set(const char* utf8str, const int totalMsToShow) {
         clear();
+        _totalMsToShow = totalMsToShow;
         int maxSize = strlen(utf8str)*2;
         _msg = (WSTR_MUTABLE)malloc(maxSize + 2);
         memset(_msg, 0, maxSize + 2);
@@ -243,7 +245,6 @@ private:
     uint32_t nextShowDateInMs = millis() + 5000;
 
     MsgToShow _rollingMsg;
-    int _rollingMsgCount;
     MsgToShow _tuningMsgNow;
     MsgToShow _additionalInfo;
 
@@ -396,24 +397,24 @@ public:
     }
 
     void showTuningMsg(const char* utf8str) {
-        _tuningMsgNow.set(utf8str);
+        _tuningMsgNow.set(utf8str, 3000);
     }
 
-    void showMessage(const char* utf8str, int cnt = 1) {
-        _rollingMsgCount = cnt;
-        _rollingMsg.set(utf8str);
+    void showMessage(const char* utf8str, int totalMsToShow) {
+        _rollingMsg.set(utf8str, totalMsToShow);
     }
 
     void setAdditionalInfo(const char* utf8str) {
-        _additionalInfo.set(utf8str);
+        _additionalInfo.set(utf8str, 0);
     }
 
     /**
      * micros is current time in microseconds
      */
     void showTime(uint32_t daysSince1970, uint32_t millisSince1200) {
+        int millisNow = millis();
         if (_tuningMsgNow.isSet()) {
-            uint32_t showedTime = millis() - _tuningMsgNow.strStartAt;
+            uint32_t showedTime = millisNow - _tuningMsgNow.strStartAt;
             printStr(width() - 1, 0, _tuningMsgNow.c_str());
             if (showedTime > 2000) {
                 _tuningMsgNow.clear();
@@ -423,8 +424,8 @@ public:
 
         if (_rollingMsg.isSet()) {
             int32_t waitBefore = 300;
-            int32_t extraTime = 300;
-            int32_t showedTime = millis() - _rollingMsg.strStartAt;
+            int32_t showedTime = std::max(millisNow - _rollingMsg.strStartAt, (int32_t)0);
+            int32_t extraTime = _rollingMsg._totalMsToShow == 0 ? 300 : std::max(_rollingMsg._totalMsToShow - showedTime - waitBefore, (int32_t)0);
             int32_t strW = getStrWidth(_rollingMsg.c_str());
             int32_t timeToShow = ((strW - 32) * _scrollSpeed);
             int32_t x = 0;
@@ -434,7 +435,11 @@ public:
             } else if (showedTime < (waitBefore + timeToShow)) {
                 x = (showedTime - waitBefore) / _scrollSpeed + 32;
             } else if (showedTime < (waitBefore + timeToShow + extraTime)) {
-                x = strW;
+                if (strW < 32) {
+                    x = 31;
+                } else {
+                    x = strW;
+                }
             } else {
                 stop = true;
                 _rollingMsg.clear();
@@ -483,23 +488,19 @@ public:
 
         // Mins
         // mins.charAt(n) - '0'
-        set(7, 0, Bitmask8x4(BIG_NUM_SYM + (mins.charAt(1) - '0')), true);
-        set(13, 0, Bitmask8x4(BIG_NUM_SYM + (mins.charAt(0) - '0')), true);
+        set(7, 0, CharacterBitmask(BIG_NUM_SYM + (mins.charAt(1) - '0')), true);
+        set(13, 0, CharacterBitmask(BIG_NUM_SYM + (mins.charAt(0) - '0')), true);
 
         // Hours
         /* hours.charAt(n) - '0'*/
-        set(20, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(1) - '0')), true);
-        set(26, 0, Bitmask8x4(BIG_NUM_SYM + (hours.charAt(0) - '0')), true);
+        set(20, 0, CharacterBitmask(BIG_NUM_SYM + (hours.charAt(1) - '0')), true);
+        set(26, 0, CharacterBitmask(BIG_NUM_SYM + (hours.charAt(0) - '0')), true);
 
         int dotframe = 100;
-        // int dots = (millisSince1200 % (dotframe*8)) / dotframe;
-        // int dots2 = (millisSince1200 % (dotframe*8)) / dotframe;
         if (millisSince1200 % 1000 < 200) {
             set(19, 1, OnePixelAt(Rectangle(0, 0, 2, 2), millisSince1200 % 1000 / 50), true);
             set(19, 5, OnePixelAt(Rectangle(0, 0, 2, 2), millisSince1200 % 1000 / 50), true);
         }
-        // set(19, 1, dots == 0); set(20, 1, dots == 1); set(19, 2, dots == 2); set(20, 2, dots == 3);
-        // set(19, 5, dots == 0); set(20, 5, dots == 1); set(19, 6, dots == 2); set(20, 6, dots == 3);
 
         int movingTimeUs = 1000 / 4; // Period of time to do seconds moving transition
         int smallFontHeight = 6;
@@ -512,11 +513,9 @@ public:
                 y = 0;
             }
 
-            set(n*4 - 1, y, Bitmask8x4(TINY_NUM_SYM + (secs.charAt(1-n) - '0')), true);
-            set(n*4 - 1, y-smallFontHeight, Bitmask8x4(TINY_NUM_SYM + (nextSecs.charAt(1-n) - '0')), true);
-            set(n*4 - 1, y-smallFontHeight*2, Bitmask8x4(TINY_NUM_SYM + (nextNextSecs.charAt(1-n) - '0')), true);
-
-            // printf("%s %s %s -> %d %ul\n", nextNextSecs.c_str(), secs.c_str(), nextSecs.c_str(), y, us); 
+            set(n*4 - 1, y, CharacterBitmask(TINY_NUM_SYM + (secs.charAt(1-n) - '0')), true);
+            set(n*4 - 1, y-smallFontHeight, CharacterBitmask(TINY_NUM_SYM + (nextSecs.charAt(1-n) - '0')), true);
+            set(n*4 - 1, y-smallFontHeight*2, CharacterBitmask(TINY_NUM_SYM + (nextNextSecs.charAt(1-n) - '0')), true);
         }
     }
 };

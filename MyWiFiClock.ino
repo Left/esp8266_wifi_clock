@@ -255,9 +255,9 @@ void setup() {
       relay.write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
     }
 
-    virtual void showMessage(const char* dd, int cnt = 1) {
+    virtual void showMessage(const char* dd, int totalMsToShow) {
       // 
-      screen.showMessage(dd, cnt);
+      screen.showMessage(dd, totalMsToShow);
     }
 
     virtual void showTuningMsg(const char* dd) {
@@ -293,6 +293,7 @@ void setup() {
           if (screenController != NULL) {
             screenController->refreshAll();
           }
+          sceleton::webSocketClient->disconnect();
         }
         restartAt = millis() + 200;
       }

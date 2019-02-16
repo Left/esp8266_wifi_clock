@@ -20,6 +20,9 @@ int main(int argc, char const *argv[]) {
     for (int ii = 0; ii < 1600; ++ii) {
         // Move cursor to top left
         putp( tparm( tigetstr((char *)"cup" ), 0, 0, 0, 0, 0, 0, 0, 0, 0 ) );
+        if (ii == 100) {
+            screen.showMessage("Another string");
+        }
         
         screen.clear();
 

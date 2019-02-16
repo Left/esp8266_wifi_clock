@@ -14,7 +14,7 @@ namespace sceleton {
 
 class Sink {
 public:
-    virtual void showMessage(const char* s, int cnt = 1) {}
+    virtual void showMessage(const char* s, int totalMsToShow) {}
     virtual void showTuningMsg(const char* s) {}
     virtual void setAdditionalInfo(const char* s) {}
     virtual void switchRelay(uint32_t id, bool val) {}
@@ -264,7 +264,7 @@ void setup(Sink* _sink) {
                         }
                     }
                 } else if (type == "firmware-update") {
-                    sink->showMessage("Update");
+                    sink->showMessage("Update", 3000);
                     t_httpUpdate_return ret = ESPhttpUpdate.update("192.168.121.38", 8080, "/esp8266/update");
                     Serial.println("Update 3 " + String(ret, DEC));
                     switch(ret) {
@@ -281,7 +281,7 @@ void setup(Sink* _sink) {
                             break;
                     }
                 } else if (type == "show") {
-                    sink->showMessage(root["text"]);
+                    sink->showMessage(root["text"], root["totalMsToShow"].as<int>());
                 } else if (type == "tune") {
                     sink->showTuningMsg(root["text"]);
                 } else if (type == "unixtime") {
@@ -382,11 +382,11 @@ void setup(Sink* _sink) {
 
     ArduinoOTA.onStart([]() {
         // Serial.println("Start OTA");  //  "Начало OTA-апдейта"
-        sink->showMessage("Updating...");
+        sink->showMessage("Updating...", 10000);
     });
     ArduinoOTA.onEnd([]() {
         // Serial.println("End OTA");  //  "Завершение OTA-апдейта"
-        sink->showMessage("Done...");
+        sink->showMessage("Done...", 10000);
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         // Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
@@ -433,7 +433,7 @@ void loop() {
     if (initializedWiFi) {
         if (millis() - lastReceived > 10000) {
             if (reportedGoingToReconnect <= lastReceived) {
-                sink->showMessage("10 секунд без связи с сервером, перезагружаемся");
+                sink->showMessage("10 секунд без связи с сервером, перезагружаемся", 30000);
                 reportedGoingToReconnect = millis();
             }
         }
