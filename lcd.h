@@ -544,11 +544,13 @@ public:
     MAX72xx(LcdScreen& _screen, 
             const int _CLK_PIN,
             const int _DATA_PIN,
-            const int _CS_PIN) : 
+            const int _CS_PIN,
+            bool _rotated180) : 
             screen(_screen), 
             CLK_PIN(_CLK_PIN),
             DATA_PIN(_DATA_PIN),
-            CS_PIN(_CS_PIN) {
+            CS_PIN(_CS_PIN),
+            rotated180(_rotated180) {
     }
 
     void sendCmd(int addr, uint8_t cmd, uint8_t data) {
@@ -588,11 +590,23 @@ public:
     }
 
     void refreshAll() {
+        LcdScreen screen2;
+        int w = screen.width();
+        int h = screen.height();
+        for (int x = 0; x < w; ++x) {
+            for (int y = 0; y < h; ++y) {
+                if (rotated180) {
+                    screen2.set(x, y, screen.get(x, y));
+                } else {
+                    screen2.set(w - (x + 1), h - (y + 1), screen.get(x, y));
+                }
+            }
+        }
         for (int line = 0; line < 8; line++) {
             digitalWrite(CS_PIN, LOW);
             for (int chip = NUM_MAX - 1; chip >= 0; chip--) {
                 shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, OP_DIGIT0 + line);
-                shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, screen.line8(chip * 8 + line));
+                shiftOut(DATA_PIN, CLK_PIN, MSBFIRST, screen2.line8(chip * 8 + line));
             }
             digitalWrite(CS_PIN, HIGH);
         }
@@ -603,6 +617,7 @@ public:
     const int CLK_PIN;
     const int DATA_PIN;
     const int CS_PIN;
+    const bool rotated180;
 
     LcdScreen& screen;
 };

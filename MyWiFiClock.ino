@@ -1,6 +1,21 @@
+/*
+static const uint8_t D0   = 16;
+static const uint8_t D1   = 5;
+static const uint8_t D2   = 4;
+static const uint8_t D3   = 0;
+static const uint8_t D4   = 2;
+static const uint8_t D5   = 14;
+static const uint8_t D6   = 12;
+static const uint8_t D7   = 13;
+static const uint8_t D8   = 15;
+static const uint8_t D9   = 3;
+static const uint8_t D10  = 1;
+*/
+
 #include "sceleton.h"
 
-#include <ESP8266HTTPClient.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
 
 #include <IRremoteESP8266.h>
 #include <IRrecv.h>
@@ -14,6 +29,7 @@
 
 #include <OneWire.h>
 #include <Q2HX711.h>
+
 
 unsigned int localPort = 2390;      // local port to listen for UDP packets
 
@@ -33,15 +49,14 @@ WiFiUDP udp;
 
 boolean screenEnaled = true;
 LcdScreen screen;
-MAX72xx* screenController;
+MAX72xx*  screenController = NULL;
+Adafruit_BME280* bme = NULL; // I2C
 
 // #define BEEPER_PIN D2 // Beeper
 
-IRrecv irrecv(D2); // 
+IRrecv* irrecv = NULL; // 
 
 int testCntr = 0;
-
-decode_results results;
 
 Q2HX711* hx711 = NULL;
 
@@ -180,7 +195,6 @@ const Remote transcendPhotoFrame("transcendPhotoFrame",
   }
 );
 
-
 const Remote* remotes[] = { 
   &tvtuner, 
   &canonCamera, 
@@ -188,7 +202,6 @@ const Remote* remotes[] = {
   &transcendPhotoFrame
 };
 
-int lastCanonRemoteCmd = millis();
 int lastNumber = millis();
 boolean invertRelayState = false;
 
@@ -217,8 +230,6 @@ void handleInterrupt() {
 }
 
 void setup() {
-  irrecv.enableIRIn();  // Start the receiver
-
   class SinkImpl : public sceleton::Sink {
   private:
     int currRelayState; // All relays are off by default
@@ -287,10 +298,11 @@ void setup() {
         if (restartReportedAt < millis()) {
           restartReportedAt = millis() + 300;
           Serial.println("Rebooting");
-          debugPrint("Rebooting");
-          screen.clear();
-          screen.showTuningMsg("Ребут");
           if (screenController != NULL) {
+            debugPrint("Rebooting");
+            screen.clear();
+            screen.showTuningMsg("Ребут");
+
             screenController->refreshAll();
           }
           sceleton::webSocketClient->disconnect();
@@ -310,11 +322,28 @@ void setup() {
 
   sceleton::setup(new SinkImpl());
 
+  if (sceleton::hasIrReceiver._value == "true") {
+    irrecv = new IRrecv(D2);
+    irrecv->enableIRIn();  // Start the receiver
+  }
+
   if (sceleton::hasDS18B20._value == "true") {
     oneWire = new OneWire(D1);
 
     oneWire->reset_search();
 	  oneWire->search(deviceAddress);
+  }
+
+  if (sceleton::hasBME280._value == "true") {
+    Wire.begin(D4, D3);
+    Wire.setClock(100000);
+
+    bme = new Adafruit_BME280();
+    bool res = bme->begin(0x76);
+    if (!res) {
+      delete bme;
+      bme = NULL;
+    }
   }
 
   if (sceleton::hasHX711._value == "true") {
@@ -324,7 +353,7 @@ void setup() {
   // Initialize comms hardware
   // pinMode(BEEPER_PIN, OUTPUT);
   if (sceleton::hasScreen._value == "true") {
-    screenController = new MAX72xx(screen, D5, D7, D6);
+    screenController = new MAX72xx(screen, D5, D7, D6, sceleton::hasScreen180Rotated._value == "true");
     screenController->setup();
   }
 
@@ -352,6 +381,7 @@ const int updateTimeEachSec = 600; // By default, update time each 600 seconds
 WiFiClient client;
 
 uint32_t lastWeighteningStarted = millis();
+uint32_t lastTemp = millis();
 long lastWeight = 0;
 uint32_t wrongTempValueReceivedCnt = 0;
 
@@ -396,6 +426,31 @@ void loop() {
     lastWeight = val;
   }
 
+  if (bme != NULL && ((millis() - lastTemp) > 2000)) {
+    lastTemp = millis();
+    float hum = bme->readHumidity();
+    float temp = bme->readTemperature();
+    float pressure = bme->readPressure();
+
+    struct {
+        const char* name;
+        float value;
+    } toSendArr[] = {
+      { "temp", temp },
+      { "humidity", hum },
+      { "pressure", pressure },
+    };
+    for (int i = 0; i < sizeof(toSendArr)/sizeof(toSendArr[0]); ++i) {
+      String toSend = String("{ \"type\": \"") + String(toSendArr[i].name) + String("\", ") + 
+          "\"value\": "  + String(toSendArr[i].value)  + ", " +  
+          "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+          "}";
+      sceleton::send(toSend);
+
+    }
+    // Serial.printf("[%f] [%f] [%f]\n", h, t, p);
+  }
+
   if (oneWire != NULL) {
     if (millis() > nextRequest) {
       oneWire->reset();
@@ -404,9 +459,10 @@ void loop() {
       nextRead = millis() + interval;
       nextRequest = millis() + interval*2;
     } else if (millis() > nextRead) {
+      Serial.println("Temp reading");
       oneWire->reset();
       oneWire->select(deviceAddress);
-      oneWire->write(0xBE);                      //Считывание значения с датчика
+      oneWire->write(0xBE);            //Считывание значения с датчика
       uint32_t byte1 = oneWire->read();
       uint32_t byte2 = oneWire->read();
       if (byte1 == 0xff && byte2 == 0xff) {
@@ -425,7 +481,6 @@ void loop() {
 
         // debugPrint("Temp: " + String(byte1, HEX) + " " + String(byte2, HEX) + " -> " + String(val));
 
-        // Serial.println("Temp " + String(val));
         String toSend = String("{ \"type\": \"temp\", ") + 
           "\"value\": "  + String(val)  + ", " +  
           "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
@@ -470,121 +525,118 @@ void loop() {
 
   sceleton::loop();
 
-  int cb = udp.parsePacket();
-  if (cb >= NTP_PACKET_SIZE) {
-    // We've received a packet, read the data from it
-    udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
+  if (sceleton::ntpTime._value == "true") {
+    int cb = udp.parsePacket();
+    if (cb >= NTP_PACKET_SIZE) {
+      // We've received a packet, read the data from it
+      udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
 
-    String pckt;
-    for (int i = 0; i < cb; ++i) {
-      if (i > 0) {
-        pckt += " ";
+      String pckt;
+      for (int i = 0; i < cb; ++i) {
+        if (i > 0) {
+          pckt += " ";
+        }
+        pckt += String(packetBuffer[i], HEX);
       }
-      pckt += String(packetBuffer[i], HEX);
-    }
 
-    //the timestamp starts at byte 40 of the received packet and is four bytes,
-    // or two words, long. First, esxtract the two words:
+      //the timestamp starts at byte 40 of the received packet and is four bytes,
+      // or two words, long. First, esxtract the two words:
 
-    unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
-    unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
-    // combine the four bytes (two words) into a long integer
-    // this is NTP time (seconds since Jan 1 1900):
-    unsigned long secsSince1900 = highWord << 16 | lowWord;
-    // debugPrint("Seconds since Jan 1 1900 = " + String(secsSince1900, DEC));
+      unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
+      unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
+      // combine the four bytes (two words) into a long integer
+      // this is NTP time (seconds since Jan 1 1900):
+      unsigned long secsSince1900 = highWord << 16 | lowWord;
+      // debugPrint("Seconds since Jan 1 1900 = " + String(secsSince1900, DEC));
 
-    // Sometimes we get broken time. In case 2018 does not appear yet, let's just ignore it silently
-    if (secsSince1900 > 118*365*24*60*60) {
-      // now convert NTP time into everyday time:
-      // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-      const uint64_t seventyYears = 2208988800ULL;
-      // subtract seventy years:
-      unsigned long epoch2 = secsSince1900 - seventyYears;
+      // Sometimes we get broken time. In case 2018 does not appear yet, let's just ignore it silently
+      if (secsSince1900 > 118*365*24*60*60) {
+        // now convert NTP time into everyday time:
+        // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
+        const uint64_t seventyYears = 2208988800ULL;
+        // subtract seventy years:
+        unsigned long epoch2 = secsSince1900 - seventyYears;
 
-      timeRetreivedInMs = millis();
-      initialUnixTime = epoch2;
-      
-      // debugPrint("Unix time = " + String(epoch2, DEC));
+        timeRetreivedInMs = millis();
+        initialUnixTime = epoch2;
+        
+        // debugPrint("Unix time = " + String(epoch2, DEC));
 
-      // print the hour, minute and second:
+        // print the hour, minute and second:
 
-      updateTime();
-    } else {
-      debugPrint(pckt);
-      debugPrint("INVALID TIME RECEIVED!");
+        updateTime();
+      } else {
+        debugPrint(pckt);
+        debugPrint("INVALID TIME RECEIVED!");
+      }
     }
   }
 
-  if (irrecv.decode(&results)) {
-    if (results.rawlen > 30) {
-      int decodedLen = 0;
-      char decoded[300] = {0};
-      String intervals("RAW: ");
-      int prevL = 0;
-      for (int i = 0; i < results.rawlen && i < sizeof(decoded); ++i) {
-        char c = -1;
-        int val = results.rawbuf[i];
-        
-        String valStr = String(val, DEC);
-        for (;valStr.length() < 4;) valStr = " " + valStr;
-        // intervals += valStr;
-        // intervals += " ";
+  
+  if (irrecv != NULL) {
+    decode_results results;
+    if (irrecv->decode(&results)) {
+      if (results.rawlen > 30) {
+        int decodedLen = 0;
+        char decoded[300] = {0};
+        int prevL = 0;
+        for (int i = 0; i < results.rawlen && i < sizeof(decoded); ++i) {
+          char c = -1;
+          int val = results.rawbuf[i];
+          
+          String valStr = String(val, DEC);
+          for (;valStr.length() < 4;) valStr = " " + valStr;
 
-        if (val > 1000) {
-          continue;
-        } else if ((prevL + val) > 150 && (prevL + val) < 500) {
-          c = '0';
-        } else if ((prevL + val) > 600 && (prevL + val) < 900) {
-          c = '1';
-        } else {
-          // Serial.print(".");
-          prevL += val;
-          continue; // skip!
+          if (val > 1000) {
+            continue;
+          } else if ((prevL + val) > 150 && (prevL + val) < 500) {
+            c = '0';
+          } else if ((prevL + val) > 600 && (prevL + val) < 900) {
+            c = '1';
+          } else {
+            prevL += val;
+            continue; // skip!
+          }
+          decoded[decodedLen++] = c;
+          prevL = 0;
         }
-        decoded[decodedLen++] = c;
-        prevL = 0;
-      }
 
-      String decodedStr(decoded);
-      const Remote* recognizedRemote = NULL;
-      const Key* recognized = NULL;
-      int kk = 0;
-      for (int r = 0; r < (sizeof(remotes)/sizeof(remotes[0])); ++r) {
-        const Remote& remote = *(remotes[r]);
-        for (int k = 0; k < remote.keys.size(); ++k) {
-          if (decodedStr.indexOf(remote.keys[k].bin) != -1) {
-            // Key pressed!
-            recognized = &(remote.keys[k]);
-            recognizedRemote = &remote;
-            kk = k;
+        String decodedStr(decoded);
+        const Remote* recognizedRemote = NULL;
+        const Key* recognized = NULL;
+        int kk = 0;
+        for (int r = 0; r < (sizeof(remotes)/sizeof(remotes[0])); ++r) {
+          const Remote& remote = *(remotes[r]);
+          for (int k = 0; k < remote.keys.size(); ++k) {
+            if (decodedStr.indexOf(remote.keys[k].bin) != -1) {
+              // Key pressed!
+              recognized = &(remote.keys[k]);
+              //Serial.println(String(recognized->value));
 
-            String toSend = String("{ \"type\": \"ir_key\", ") + 
-              "\"remote\": \"" + String(recognizedRemote->name) + "\", " + 
-              "\"key\": \""  + String(remote.keys[k].value)  + "\", " +  
-              "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
-              "}";
+              recognizedRemote = &remote;
+              kk = k;
 
-            sceleton::send(toSend);
+              String toSend = String("{ \"type\": \"ir_key\", ") + 
+                "\"remote\": \"" + String(recognizedRemote->name) + "\", " + 
+                "\"key\": \""  + String(remote.keys[k].value)  + "\", " +  
+                "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+                "}";
 
-            break;
+              sceleton::send(toSend);
+
+              break;
+            }
           }
         }
-      }
 
-      if (recognized == NULL) {
-        // debugPrint(decoded);
-        // debugPrint(intervals);
-      } else {
-        if (millis() - lastCanonRemoteCmd > 200) {
-          lastCanonRemoteCmd = millis();
-
-          String val(recognized->value);
-
+        if (recognized == NULL) {
+          // debugPrint(decoded);
+          Serial.println("Unrecognized");
         }
       }
-    }
 
-    irrecv.resume();  // Receive the next value
+      irrecv->resume();  // Receive the next value
+    }
   }
 
   // Serial.println(String(millis(), DEC));
