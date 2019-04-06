@@ -1,3 +1,4 @@
+#pragma once
 /**
  * Some useful common things
  */

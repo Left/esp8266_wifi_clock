@@ -1,35 +1,27 @@
-/*
-static const uint8_t D0   = 16;
-static const uint8_t D1   = 5;
-static const uint8_t D2   = 4;
-static const uint8_t D3   = 0;
-static const uint8_t D4   = 2;
-static const uint8_t D5   = 14;
-static const uint8_t D6   = 12;
-static const uint8_t D7   = 13;
-static const uint8_t D8   = 15;
-static const uint8_t D9   = 3;
-static const uint8_t D10  = 1;
-*/
-
 #include "sceleton.h"
 
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include <Adafruit_NeoPixel.h>
 
+#ifndef ESP01
 #include <IRremoteESP8266.h>
 #include <IRrecv.h>
 #include <IRutils.h>
+#endif
 
+#ifndef ESP01
 #include <WiFiUdp.h>
 #include <SoftwareSerial.h>
+#endif
 
 #include "worklogic.h"
-#include "lcd.h"
 
+#ifndef ESP01
+#include "lcd.h"
 #include <OneWire.h>
 #include <Q2HX711.h>
-
+#endif
 
 unsigned int localPort = 2390;      // local port to listen for UDP packets
 
@@ -48,18 +40,27 @@ unsigned long sendNTPpacket(IPAddress& address);
 WiFiUDP udp;
 
 boolean screenEnaled = true;
+
+#ifndef ESP01
 LcdScreen screen;
 MAX72xx*  screenController = NULL;
+#endif
+
 Adafruit_BME280* bme = NULL; // I2C
 
 // #define BEEPER_PIN D2 // Beeper
 
+#ifndef ESP01
 IRrecv* irrecv = NULL; // 
+#endif
 
 int testCntr = 0;
 
+#ifndef ESP01
 Q2HX711* hx711 = NULL;
+#endif
 
+#ifndef ESP01
 struct Key {
   const char* bin;
   const char* value;
@@ -201,14 +202,21 @@ const Remote* remotes[] = {
   &prologicTV,
   &transcendPhotoFrame
 };
+#endif
 
 int lastNumber = millis();
+
+#ifndef ESP01
 boolean invertRelayState = false;
 
 boolean relayIsInitialized = false;
 SoftwareSerial relay(D1, D0); // RX, TX
 
 OneWire* oneWire;
+#endif
+
+const int NUMPIXELS = 64;
+Adafruit_NeoPixel* stripe = NULL;
 
 #define ULONG_MAX 0xffffffff
 
@@ -246,7 +254,7 @@ void setup() {
 
     virtual void switchRelay(uint32_t id, bool val) {
       // Serial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
-
+#ifndef ESP01
       int bit = 1 << id;
       currRelayState = currRelayState & ~bit;
       if (val) {
@@ -264,31 +272,54 @@ void setup() {
       }
       
       relay.write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
+#endif
     }
 
     virtual void showMessage(const char* dd, int totalMsToShow) {
+#ifndef ESP01
       // 
       screen.showMessage(dd, totalMsToShow);
+#endif
     }
 
     virtual void showTuningMsg(const char* dd) {
+#ifndef ESP01
       screen.showTuningMsg(dd);
+#endif
     }
 
     virtual void setAdditionalInfo(const char* dd) {
+#ifndef ESP01
       // 
       screen.setAdditionalInfo(dd);
+#endif
     }
 
     virtual void setBrightness(int percents) {
+#ifndef ESP01
       if (screenController != NULL) {
         screenController->setBrightness(percents);
       }
+#endif
     }
 
     virtual void setTime(uint32_t unixTime) {
         initialUnixTime = unixTime;
         timeRetreivedInMs = millis();
+    }
+
+    virtual void setLedStripe(std::vector<uint32_t> colors) {
+      if (stripe != NULL) {
+        for (uint16_t i=0; i < colors.size(); i++) {
+          const uint32_t clr = colors[i];
+          stripe->setPixelColor(i, stripe->Color(
+            (clr >> 24) & 0x000000ff, 
+            (clr >> 16) & 0x000000ff, 
+            (clr >> 8) & 0x000000ff, 
+            (clr >> 0) & 0x000000ff) );
+        }
+        stripe->show();
+      }
     }
 
     int restartReportedAt = 0;
@@ -297,7 +328,8 @@ void setup() {
       if (restartAt - millis() >= 200) { 
         if (restartReportedAt < millis()) {
           restartReportedAt = millis() + 300;
-          Serial.println("Rebooting");
+          #ifndef ESP01
+          // Serial.println("Rebooting");
           if (screenController != NULL) {
             debugPrint("Rebooting");
             screen.clear();
@@ -306,6 +338,7 @@ void setup() {
             screenController->refreshAll();
           }
           sceleton::webSocketClient->disconnect();
+          #endif
         }
         restartAt = millis() + 200;
       }
@@ -322,17 +355,30 @@ void setup() {
 
   sceleton::setup(new SinkImpl());
 
+  if (sceleton::hasLedStripe._value == "true") {
+    stripe = new Adafruit_NeoPixel(NUMPIXELS, 0, NEO_GRBW + NEO_KHZ800);
+    stripe->begin();
+    for (int i = 0; i < NUMPIXELS; ++i) {
+      stripe->setPixelColor(i, stripe->Color(0, 0, 0, 0));
+    }
+    stripe->show();
+  }
+
+#ifndef ESP01
   if (sceleton::hasIrReceiver._value == "true") {
     irrecv = new IRrecv(D2);
     irrecv->enableIRIn();  // Start the receiver
   }
+#endif
 
+#ifndef ESP01
   if (sceleton::hasDS18B20._value == "true") {
     oneWire = new OneWire(D1);
 
     oneWire->reset_search();
 	  oneWire->search(deviceAddress);
   }
+#endif
 
   if (sceleton::hasBME280._value == "true") {
     Wire.begin(D4, D3);
@@ -346,12 +392,15 @@ void setup() {
     }
   }
 
+#ifndef ESP01
   if (sceleton::hasHX711._value == "true") {
     hx711 = new Q2HX711(D5, D6);
   }
+#endif
 
   // Initialize comms hardware
   // pinMode(BEEPER_PIN, OUTPUT);
+#ifndef ESP01
   if (sceleton::hasScreen._value == "true") {
     screenController = new MAX72xx(screen, D5, D7, D6, sceleton::hasScreen180Rotated._value == "true");
     screenController->setup();
@@ -368,6 +417,7 @@ void setup() {
 
     WiFi.hostByName(ntpServerName, timeServerIP);
   }  
+#endif
 }
 
 unsigned long oldMicros = micros();
@@ -384,12 +434,13 @@ uint32_t lastWeighteningStarted = millis();
 uint32_t lastTemp = millis();
 long lastWeight = 0;
 uint32_t wrongTempValueReceivedCnt = 0;
+uint32_t lastStripeFrame = millis();
 
 void loop() {
   uint32_t st = millis();
 
-  if (restartAt < millis()) {
-    Serial.println("ESP.reset");
+  if (restartAt < st) {
+    // Serial.println("ESP.reset");
     ESP.reset();
     ESP.restart();
   }
@@ -410,6 +461,7 @@ void loop() {
     sendNTPpacket(timeServerIP); // send an NTP packet to a time server
   }
 
+#ifndef ESP01
   if (sceleton::hasHX711._value == "true" && (millis() - lastWeighteningStarted) > 100 && hx711->readyToSend()) {
     lastWeighteningStarted = millis();
 
@@ -425,6 +477,7 @@ void loop() {
 
     lastWeight = val;
   }
+#endif
 
   if (bme != NULL && ((millis() - lastTemp) > 2000)) {
     lastTemp = millis();
@@ -451,6 +504,7 @@ void loop() {
     // Serial.printf("[%f] [%f] [%f]\n", h, t, p);
   }
 
+#ifndef ESP01
   if (oneWire != NULL) {
     if (millis() > nextRequest) {
       oneWire->reset();
@@ -459,7 +513,7 @@ void loop() {
       nextRead = millis() + interval;
       nextRequest = millis() + interval*2;
     } else if (millis() > nextRead) {
-      Serial.println("Temp reading");
+      // Serial.println("Temp reading");
       oneWire->reset();
       oneWire->select(deviceAddress);
       oneWire->write(0xBE);            //Считывание значения с датчика
@@ -471,7 +525,7 @@ void loop() {
           debugPrint("Wrong temp: " + String(wrongTempValueReceivedCnt, DEC));
         }
         if (wrongTempValueReceivedCnt == 40) {
-          Serial.println("Rebooting because of bad temp");
+          // Serial.println("Rebooting because of bad temp");
           sceleton::sink->reboot();
         }
       } else {
@@ -491,10 +545,12 @@ void loop() {
       nextRead = ULONG_MAX;
     }
   }
+#endif
 
   oldMicros = micros();
   testCntr++;
 
+#ifndef ESP01
   screen.clear();
 
   if (sceleton::initializedWiFi) {
@@ -522,9 +578,11 @@ void loop() {
         screenController->refreshAll();
     }
   }
+#endif
 
   sceleton::loop();
 
+#ifndef ESP01
   if (sceleton::ntpTime._value == "true") {
     int cb = udp.parsePacket();
     if (cb >= NTP_PACKET_SIZE) {
@@ -571,8 +629,9 @@ void loop() {
       }
     }
   }
+#endif
 
-  
+#ifndef ESP01
   if (irrecv != NULL) {
     decode_results results;
     if (irrecv->decode(&results)) {
@@ -631,14 +690,14 @@ void loop() {
 
         if (recognized == NULL) {
           // debugPrint(decoded);
-          Serial.println("Unrecognized");
+          // Serial.println("Unrecognized");
         }
       }
 
       irrecv->resume();  // Receive the next value
     }
   }
-
+#endif
   // Serial.println(String(millis(), DEC));
 }
 
@@ -655,6 +714,7 @@ void updateTime() {
 
 // send an NTP request to the time server at the given address
 unsigned long sendNTPpacket(IPAddress& address) {
+#ifndef ESP01
   if (sceleton::ntpTime._value == "true") {
     // set all bytes in the buffer to 0
     memset(packetBuffer, 0, NTP_PACKET_SIZE);
@@ -676,4 +736,5 @@ unsigned long sendNTPpacket(IPAddress& address) {
     udp.write(packetBuffer, NTP_PACKET_SIZE);
     udp.endPacket();
   }
+#endif
 }
