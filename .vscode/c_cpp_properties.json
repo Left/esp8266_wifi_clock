@@ -5,14 +5,22 @@
             "includePath": [
                 "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/cores/esp8266",
                 "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ArduinoOTA",
-                "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ESP8266httpUpdate"
+                "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ESP8266httpUpdate",
+                "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ESP8266WiFi",
+                "/Users/vridosh/Documents/Arduino/libraries/ESPAsyncTCP-master",
+                "/Users/vridosh/Documents/Arduino/libraries/ESPAsyncWebServer",
+                "/Users/vridosh/Documents/Arduino/libraries/arduino_675163/"
             ],
             "browse": {
                 "limitSymbolsToIncludedHeaders": false,
                 "path": [
                     "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/cores/esp8266",
                     "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ArduinoOTA",
-                    "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ESP8266httpUpdate"
+                    "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ESP8266httpUpdate",
+                    "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.2/libraries/ESP8266WiFi/src/",
+                    "/Users/vridosh/Documents/Arduino/libraries/ESPAsyncTCP-master/src",
+                    "/Users/vridosh/Documents/Arduino/libraries/ESPAsyncWebServer/src",
+                    "/Users/vridosh/Documents/Arduino/libraries/arduino_675163/src/"
                 ]
             },
             "macFrameworkPath": [

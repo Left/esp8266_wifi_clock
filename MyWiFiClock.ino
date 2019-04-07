@@ -11,7 +11,6 @@
 #endif
 
 #ifndef ESP01
-#include <WiFiUdp.h>
 #include <SoftwareSerial.h>
 #endif
 
@@ -33,13 +32,7 @@ byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing pack
 
 const uint64_t dayInMs = 24*60*60*1000;
 
-void updateTime();
-unsigned long sendNTPpacket(IPAddress& address);
-
-// A UDP instance to let us send and receive packets over UDP
-WiFiUDP udp;
-
-boolean screenEnaled = true;
+boolean isScreenEnabled = true;
 
 #ifndef ESP01
 LcdScreen screen;
@@ -204,8 +197,6 @@ const Remote* remotes[] = {
 };
 #endif
 
-int lastNumber = millis();
-
 #ifndef ESP01
 boolean invertRelayState = false;
 
@@ -236,6 +227,90 @@ uint32_t restartAt = ULONG_MAX;
 void handleInterrupt() {
   interruptCounter++;
 }
+
+boolean encoderPinChanged = false;
+
+class Encoder {
+public:
+  Encoder(const char* name, int a, int b, int button):
+    encName(name), pinA(a), pinB(b), pinButton(button) {
+  }
+
+  void process() {
+    if (encoderPinChanged) {
+      int pA = digitalRead(pinA);
+      int pB = digitalRead(pinB);
+      int pBtn = digitalRead(pinButton);
+
+      String s = "encoder_";
+      s += encName;
+      if (pA != _pA || pB != _pB) {
+        if (_pA == 0 && _pB == 1 && pA == 1 && pB == 1) {
+          String toSend = String("{ \"type\": \"ir_key\", ") + 
+            "\"remote\": \"" + s + "\", " + 
+            "\"key\": \"" + "rotate_cw" + "\", " +  
+            "\"timeseq\": "  + String(millis(), DEC)  + " " +  
+            "}";
+
+          sceleton::send(toSend);
+        } else if (_pA == 1 && _pB == 0 && pA == 1 && pB == 1) {
+          String toSend = String("{ \"type\": \"ir_key\", ") + 
+            "\"remote\": \"" + s + "\", " + 
+            "\"key\": \"" + "rotate_ccw" + "\", " +  
+            "\"timeseq\": "  + String(millis(), DEC)  + " " +  
+            "}";
+
+          sceleton::send(toSend);
+        }
+        _pA = pA;
+        _pB = pB;
+      }
+      if (pBtn != _pBtn) {
+        if (_pBtn == 0 && pBtn == 1) {
+          String toSend = String("{ \"type\": \"ir_key\", ") + 
+            "\"remote\": \"" + s + "\", " + 
+            "\"key\": \"" + "click" + "\", " +  
+            "\"timeseq\": "  + String(millis(), DEC)  + " " +  
+            "}";
+
+          sceleton::send(toSend);
+        }
+        _pBtn = pBtn;
+      }
+    }
+  }
+
+  static void cont() {
+    encoderPinChanged = false;
+  }
+
+  void init() {
+    const int pins[] = { pinA, pinB, pinButton };
+    for (int i = 0; i < __countof(pins); ++i) {
+      pinMode(pins[i], INPUT_PULLUP);
+      attachInterrupt(digitalPinToInterrupt(pins[i]), pinChange, CHANGE);
+    }
+    _pA = digitalRead(pinA);
+    _pB = digitalRead(pinB);
+    _pBtn = digitalRead(pinButton);
+  }
+
+private:
+  const char* encName;
+  const int pinA;
+  const int pinB;
+  const int pinButton;
+  int _pA, _pB, _pBtn;
+  
+  static void pinChange() {
+    encoderPinChanged = true;
+  }
+};
+
+Encoder encoders[] = {
+  Encoder("left", D1, D2, D3),
+  Encoder("right", D5, D6, D7),
+};
 
 void setup() {
   class SinkImpl : public sceleton::Sink {
@@ -345,11 +420,11 @@ void setup() {
     }
 
     virtual void enableScreen(const boolean enabled) {
-      screenEnaled = enabled;
+      isScreenEnabled = enabled;
     }
 
     virtual boolean screenEnabled() { 
-      return screenEnaled; 
+      return isScreenEnabled; 
     }
   };
 
@@ -411,12 +486,13 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(D7), handleInterrupt, CHANGE);
   }
 
-  // screen.showMessage("Инициализация...");
-  if (sceleton::ntpTime._value == "true") {
-    udp.begin(localPort);
+  if (sceleton::hasEncoders._value == "true") {
+      for (int i=0; i < __countof(encoders); ++i) {
+        encoders[i].init();
+      }
 
-    WiFi.hostByName(ntpServerName, timeServerIP);
-  }  
+      Serial.println("PINS initialized");
+  }
 #endif
 }
 
@@ -434,10 +510,18 @@ uint32_t lastWeighteningStarted = millis();
 uint32_t lastTemp = millis();
 long lastWeight = 0;
 uint32_t wrongTempValueReceivedCnt = 0;
-uint32_t lastStripeFrame = millis();
+long lastStripeFrame = millis();
+
+long lastLoop = millis();
+long lastLoopEnd = millis();
 
 void loop() {
-  uint32_t st = millis();
+  if (millis() - lastLoop > 50) {
+        Serial.println(String("Long main loop: ") + String(millis() - lastLoop, DEC) + " " + String(millis() - lastLoopEnd, DEC));
+  }
+  lastLoop = millis();
+
+  long st = millis();
 
   if (restartAt < st) {
     // Serial.println("ESP.reset");
@@ -446,6 +530,7 @@ void loop() {
   }
 
   if (interruptCounter > 0) {
+    Serial.println("1");
     String toSend = String("{ \"type\": \"button\", ") + 
         "\"value\": " + (digitalRead(D7) == LOW ? "true" : "false") + ", " +  
         "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
@@ -455,14 +540,9 @@ void loop() {
     interruptCounter = 0;
   }
 
-  if (millis() % 5*60*1000 == 0 && (((millis() - timeRequestedAt) > (timeRetreivedInMs == 0 ? 5 : updateTimeEachSec)*1000))) {
-    // debugPrint("Requesting time");
-    timeRequestedAt = millis();
-    sendNTPpacket(timeServerIP); // send an NTP packet to a time server
-  }
-
 #ifndef ESP01
   if (sceleton::hasHX711._value == "true" && (millis() - lastWeighteningStarted) > 100 && hx711->readyToSend()) {
+    Serial.println("3");
     lastWeighteningStarted = millis();
 
     // Serial.println();
@@ -480,6 +560,7 @@ void loop() {
 #endif
 
   if (bme != NULL && ((millis() - lastTemp) > 2000)) {
+    Serial.println("4");
     lastTemp = millis();
     float hum = bme->readHumidity();
     float temp = bme->readTemperature();
@@ -506,6 +587,7 @@ void loop() {
 
 #ifndef ESP01
   if (oneWire != NULL) {
+    Serial.println("5");
     if (millis() > nextRequest) {
       oneWire->reset();
       oneWire->write(0xCC);   //Обращение ко всем датчикам
@@ -551,85 +633,30 @@ void loop() {
   testCntr++;
 
 #ifndef ESP01
-  screen.clear();
+  if (screenController != NULL && isScreenEnabled) {
+    screen.clear();
 
-  if (sceleton::initializedWiFi) {
-    if (timeRetreivedInMs) {
-      updateTime();
-      if (screenEnaled) {
-        screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
-      }
+    if (sceleton::initializedWiFi && timeRetreivedInMs != 0) {
+      // UTC is the time at Greenwich Meridian (GMT)
+      // print the hour (86400 equals secs per day)
+      nowMs = initialUnixTime * 1000ull + ((uint64_t)millis() - (uint64_t)timeRetreivedInMs);
+      nowMs += 3*60*60*1000; // Timezone (UTC+3)
 
-      if (screenController != NULL) {
-        screenController->refreshAll();
-      }
+      uint32_t epoch = nowMs/1000ull;
+      hours = (epoch % 86400L) / 3600;
+      mins = (epoch % 3600) / 60;
+
+      screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
+      screenController->refreshAll();
     } else {
-      // const wchar_t* getTime = L"  Получаем время с сервера...  ";
-      // screen.printStr((micros() / 1000 / 30) % screen.getStrWidth(getTime), 0, getTime);
       screen.clear();
       screen.set(0, 0, OnePixelAt(Rectangle(0, 0, 32, 8), (millis() / 30) % (32*8)), true);
-      if (screenController != NULL) {
-        screenController->refreshAll();
-      }
-    }
-  } else {
-    screen.showTime(0, millis() % 1000);
-    if (screenController != NULL) {
-        screenController->refreshAll();
+      screenController->refreshAll();
     }
   }
 #endif
 
   sceleton::loop();
-
-#ifndef ESP01
-  if (sceleton::ntpTime._value == "true") {
-    int cb = udp.parsePacket();
-    if (cb >= NTP_PACKET_SIZE) {
-      // We've received a packet, read the data from it
-      udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-
-      String pckt;
-      for (int i = 0; i < cb; ++i) {
-        if (i > 0) {
-          pckt += " ";
-        }
-        pckt += String(packetBuffer[i], HEX);
-      }
-
-      //the timestamp starts at byte 40 of the received packet and is four bytes,
-      // or two words, long. First, esxtract the two words:
-
-      unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
-      unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
-      // combine the four bytes (two words) into a long integer
-      // this is NTP time (seconds since Jan 1 1900):
-      unsigned long secsSince1900 = highWord << 16 | lowWord;
-      // debugPrint("Seconds since Jan 1 1900 = " + String(secsSince1900, DEC));
-
-      // Sometimes we get broken time. In case 2018 does not appear yet, let's just ignore it silently
-      if (secsSince1900 > 118*365*24*60*60) {
-        // now convert NTP time into everyday time:
-        // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-        const uint64_t seventyYears = 2208988800ULL;
-        // subtract seventy years:
-        unsigned long epoch2 = secsSince1900 - seventyYears;
-
-        timeRetreivedInMs = millis();
-        initialUnixTime = epoch2;
-        
-        // debugPrint("Unix time = " + String(epoch2, DEC));
-
-        // print the hour, minute and second:
-
-        updateTime();
-      } else {
-        debugPrint(pckt);
-        debugPrint("INVALID TIME RECEIVED!");
-      }
-    }
-  }
-#endif
 
 #ifndef ESP01
   if (irrecv != NULL) {
@@ -675,10 +702,13 @@ void loop() {
               recognizedRemote = &remote;
               kk = k;
 
+              String keyVal(remote.keys[k].value);
+              Serial.println(keyVal);
+
               String toSend = String("{ \"type\": \"ir_key\", ") + 
                 "\"remote\": \"" + String(recognizedRemote->name) + "\", " + 
-                "\"key\": \""  + String(remote.keys[k].value)  + "\", " +  
-                "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+                "\"key\": \"" + keyVal + "\", " +  
+                "\"timeseq\": "  + String(millis(), DEC)  + " " +  
                 "}";
 
               sceleton::send(toSend);
@@ -690,7 +720,7 @@ void loop() {
 
         if (recognized == NULL) {
           // debugPrint(decoded);
-          // Serial.println("Unrecognized");
+          Serial.println("Unrecognized");
         }
       }
 
@@ -699,42 +729,12 @@ void loop() {
   }
 #endif
   // Serial.println(String(millis(), DEC));
-}
+  lastLoopEnd = millis();
 
-void updateTime() {
-  // UTC is the time at Greenwich Meridian (GMT)
-  // print the hour (86400 equals secs per day)
-  nowMs = initialUnixTime * 1000ull + ((uint64_t)millis() - (uint64_t)timeRetreivedInMs);
-  nowMs += 3*60*60*1000; // Timezone (UTC+3)
-
-  uint32_t epoch = nowMs/1000ull;
-  hours = (epoch % 86400L) / 3600;
-  mins = (epoch % 3600) / 60;
-}
-
-// send an NTP request to the time server at the given address
-unsigned long sendNTPpacket(IPAddress& address) {
-#ifndef ESP01
-  if (sceleton::ntpTime._value == "true") {
-    // set all bytes in the buffer to 0
-    memset(packetBuffer, 0, NTP_PACKET_SIZE);
-    // Initialize values needed to form NTP request
-    // (see URL above for details on the packets)
-    packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-    packetBuffer[1] = 0;     // Stratum, or type of clock
-    packetBuffer[2] = 6;     // Polling Interval
-    packetBuffer[3] = 0xEC;  // Peer Clock Precision
-    // 8 bytes of zero for Root Delay & Root Dispersion
-    packetBuffer[12]  = 49;
-    packetBuffer[13]  = 0x4E;
-    packetBuffer[14]  = 49;
-    packetBuffer[15]  = 52;
-
-    // all NTP fields have been given values, now
-    // you can send a packet requesting a timestamp:
-    udp.beginPacket(address, 123); //NTP requests are to port 123
-    udp.write(packetBuffer, NTP_PACKET_SIZE);
-    udp.endPacket();
+  // Process encoders
+  for (int i = 0; i < __countof(encoders); ++i) {
+    encoders[i].process();
   }
-#endif
+  Encoder::cont();
 }
+
