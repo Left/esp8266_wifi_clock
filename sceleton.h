@@ -100,8 +100,8 @@ public:
 
 DevParam deviceName("device.name", "Device Name", String("ESP_") + ESP.getChipId());
 DevParam deviceNameRussian("device.name.russian", "Device Name (russian)", "");
-DevParam wifiName("wifi.name", "WiFi SSID", "");
-DevParam wifiPwd("wifi.pwd", "WiFi Password", "", true);
+DevParam wifiName("wifi.name", "WiFi SSID", "rabbithole_asus");
+DevParam wifiPwd("wifi.pwd", "WiFi Password", "ak9737735", true);
 DevParam websocketServer("websocket.server", "WebSocket server", "192.168.121.38");
 DevParam websocketPort("websocket.port", "WebSocket port", "8080");
 #ifndef ESP01
@@ -119,6 +119,7 @@ DevParam hasButton("hasButton", "Has button on D7", "false");
 DevParam brightness("brightness", "Brightness [0..100]", "0");
 DevParam hasEncoders("hasEncoders", "Has encoders", "false");
 DevParam relayNames("relay.names", "Relay names, separated by ;", "");
+DevParam hasMsp430("hasMsp430WithEncoders", "Has MSP430 with encoders", "false");
 #endif
 
 DevParam* devParams[] = { 
@@ -142,7 +143,8 @@ DevParam* devParams[] = {
 #ifndef ESP01
     &hasButton, 
     &brightness,
-    &relayNames
+    &relayNames,
+    &hasMsp430
 #endif
 }; 
 Sink* sink = new Sink();
@@ -476,6 +478,7 @@ int32_t lastWiFiState = millis();
 int32_t lastLoop = millis();
 
 int32_t oldStatus = WiFi.status();
+int32_t lastReconnect = millis();
 
 void loop() {
     if (millis() - lastLoop > 50) {
@@ -483,7 +486,8 @@ void loop() {
     }
     lastLoop = millis();
 
-    if (WiFi.status() != WL_CONNECTED && millis() % 4000 == 0) {
+    if (WiFi.status() != WL_CONNECTED && (millis() - lastReconnect) >= 4000) {
+        lastReconnect = millis();
         Serial.println(String("WiFi.status() check: ") + WiFi.status());
         bool ret = WiFi.reconnect();
         Serial.println(String("Reconnect returned ") + ret);

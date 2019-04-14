@@ -204,6 +204,7 @@ boolean relayIsInitialized = false;
 SoftwareSerial relay(D1, D0); // RX, TX
 
 OneWire* oneWire;
+SoftwareSerial* msp430; // RX, TX
 #endif
 
 const int NUMPIXELS = 64;
@@ -487,11 +488,19 @@ void setup() {
   }
 
   if (sceleton::hasEncoders._value == "true") {
-      for (int i=0; i < __countof(encoders); ++i) {
-        encoders[i].init();
-      }
+  // if (false) {
+    for (int i=0; i < __countof(encoders); ++i) {
+      encoders[i].init();
+    }
 
-      Serial.println("PINS initialized");
+    Serial.println("PINS initialized");
+  }
+
+  if (sceleton::hasMsp430._value == "true") {
+  // if (true) {
+    msp430 = new SoftwareSerial(D6, D5); 
+    msp430->begin(9600);
+    Serial.println("MSP430 initialized");
   }
 #endif
 }
@@ -633,20 +642,22 @@ void loop() {
   testCntr++;
 
 #ifndef ESP01
-  if (screenController != NULL && isScreenEnabled) {
+  if (screenController != NULL) {
     screen.clear();
 
     if (sceleton::initializedWiFi && timeRetreivedInMs != 0) {
-      // UTC is the time at Greenwich Meridian (GMT)
-      // print the hour (86400 equals secs per day)
-      nowMs = initialUnixTime * 1000ull + ((uint64_t)millis() - (uint64_t)timeRetreivedInMs);
-      nowMs += 3*60*60*1000; // Timezone (UTC+3)
+      if (isScreenEnabled) {
+        // UTC is the time at Greenwich Meridian (GMT)
+        // print the hour (86400 equals secs per day)
+        nowMs = initialUnixTime * 1000ull + ((uint64_t)millis() - (uint64_t)timeRetreivedInMs);
+        nowMs += 3*60*60*1000; // Timezone (UTC+3)
 
-      uint32_t epoch = nowMs/1000ull;
-      hours = (epoch % 86400L) / 3600;
-      mins = (epoch % 3600) / 60;
+        uint32_t epoch = nowMs/1000ull;
+        hours = (epoch % 86400L) / 3600;
+        mins = (epoch % 3600) / 60;
 
-      screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
+        screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
+      }
       screenController->refreshAll();
     } else {
       screen.clear();
@@ -725,6 +736,36 @@ void loop() {
       }
 
       irrecv->resume();  // Receive the next value
+    }
+  }
+
+  if (msp430 != NULL) {
+    for (;msp430->available() > 0;) {
+      int ch = msp430->read();
+      const char encoders[] = { 'A', 'G', 'O' };
+      const char* encoderNames[] = { "left", "middle", "right" };
+      for (int enc = 0; enc < __countof(encoders); ++enc) {
+        const char* ss = NULL;
+        if (encoders[enc] + 1 == ch) {
+          ss = "rotate_cw";
+        } else if (encoders[enc] + 2 == ch) {
+          ss = "rotate_ccw";
+        } else if (encoders[enc] + 3 == ch) {
+          ss = "click";
+        }
+        if (ss != NULL) {
+          String s = "encoder_";
+          s += encoderNames[enc];
+          String toSend = String("{ \"type\": \"ir_key\", ") + 
+            "\"remote\": \"" + s + "\", " + 
+            "\"key\": \"" + ss + "\", " +  
+            "\"timeseq\": "  + String(millis(), DEC)  + " " +  
+            "}";
+          Serial.printf("> %s %s\n", s.c_str(), ss);
+
+          sceleton::send(toSend);
+        }
+      }
     }
   }
 #endif
