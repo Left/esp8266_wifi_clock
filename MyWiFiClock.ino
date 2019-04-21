@@ -225,10 +225,13 @@ uint32_t initialUnixTime = 0;
 uint32_t timeRequestedAt = 0;
 uint32_t restartAt = ULONG_MAX;
 
+std::vector<uint32_t> ledStripe;
+
 void handleInterrupt() {
   interruptCounter++;
 }
 
+#ifndef ESP01
 boolean encoderPinChanged = false;
 
 class Encoder {
@@ -312,6 +315,7 @@ Encoder encoders[] = {
   Encoder("left", D1, D2, D3),
   Encoder("right", D5, D6, D7),
 };
+#endif // ESP01
 
 void setup() {
   class SinkImpl : public sceleton::Sink {
@@ -394,8 +398,13 @@ void setup() {
             (clr >> 8) & 0x000000ff, 
             (clr >> 0) & 0x000000ff) );
         }
+        ledStripe.swap(colors);
         stripe->show();
       }
+    }
+
+    virtual const std::vector<uint32_t>& getLedStripe() {
+      return ledStripe;
     }
 
     int restartReportedAt = 0;
@@ -770,12 +779,14 @@ void loop() {
   }
 #endif
   // Serial.println(String(millis(), DEC));
-  lastLoopEnd = millis();
-
+#ifndef ESP01
   // Process encoders
   for (int i = 0; i < __countof(encoders); ++i) {
     encoders[i].process();
   }
   Encoder::cont();
+#endif
+
+  lastLoopEnd = millis();
 }
 

@@ -9,9 +9,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoOTA.h>
 
-#ifndef D0
-// #define ESP01
-#endif
+#define ESP01
 
 #ifdef ESP01
 static const uint8_t D0   = 16;
@@ -41,6 +39,7 @@ public:
     virtual void setBrightness(int percents) {}
     virtual void setTime(uint32_t unixTime) {}
     virtual void setLedStripe(std::vector<uint32_t> colors) {}
+    virtual const std::vector<uint32_t>& getLedStripe() {}
     virtual void reboot() {}
     virtual void enableScreen(const boolean enabled) {}
     virtual boolean screenEnabled() { return false; }
@@ -139,8 +138,8 @@ DevParam* devParams[] = {
 #endif
     &hasBME280,
     &hasLedStripe,
-    &hasEncoders,
 #ifndef ESP01
+    &hasEncoders,
     &hasButton, 
     &brightness,
     &relayNames,
@@ -160,6 +159,22 @@ void reportRelayState(uint32_t id) {
 void onDisconnect(const WiFiEventStationModeDisconnected& event) {
     // Serial.println("WiFi On Disconnect.");
     // Serial.println(event.reason);
+}
+
+String encodeRGBWString(const std::vector<uint32_t>& val) {
+    String res = "";
+    for (uint32_t k = 0; k < val.size(); ++k) {
+        uint32_t toAdd = val[k];
+        for (int i = 0; i<8; ++i) {
+            char xx = (char)((toAdd >> (28 - i*4)) & 0xf);
+            if (xx > 9) {
+                res += (char)('A' + (xx - 10));
+            } else {
+                res += (char)('0' + xx);
+            }
+        }
+    }
+    return res;
 }
 
 std::vector<uint32_t> decodeRGBWString(const char* val) {
@@ -198,6 +213,8 @@ void setup(Sink* _sink) {
     }
     Serial.println();
     Serial.println("Initialized in " + String(millis() - was, DEC));
+    Serial.println(wifiName._value.c_str());
+    Serial.println(wifiPwd._value.c_str());
 
     WiFi.persistent(false);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
@@ -288,6 +305,10 @@ void setup(Sink* _sink) {
                         send("{ \"type\": \"relayState\", \"id\": " + String(id, DEC) + ", \"value\":" + (sink->relayState(id) ? "true" : "false") + " }");
                     }
                     #endif
+
+                    if (sceleton::hasLedStripe._value.c_str()) {
+                        send("{ \"type\": \"ledstripeState\", \"value\":\"" + encodeRGBWString(sink->getLedStripe()) + "\" }");
+                    }
 
                     break;
                 }
