@@ -204,7 +204,9 @@ boolean relayIsInitialized = false;
 SoftwareSerial relay(D1, D0); // RX, TX
 
 OneWire* oneWire;
-SoftwareSerial* msp430; // RX, TX
+
+uint32_t lastMsp430Ping = millis();
+HardwareSerial* msp430; // RX, TX
 #endif
 
 const int NUMPIXELS = 64;
@@ -224,6 +226,10 @@ uint32_t timeRetreivedInMs = 0;
 uint32_t initialUnixTime = 0;
 uint32_t timeRequestedAt = 0;
 uint32_t restartAt = ULONG_MAX;
+uint32_t nextPotentiometer = 0;
+uint32_t potentiometerValues[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+uint32_t potentiometerIndex = 0;
+int32_t reportedPotentiometer = -1;
 
 std::vector<uint32_t> ledStripe;
 
@@ -333,7 +339,7 @@ void setup() {
     } 
 
     virtual void switchRelay(uint32_t id, bool val) {
-      // Serial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
+      // debugSerial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
 #ifndef ESP01
       int bit = 1 << id;
       currRelayState = currRelayState & ~bit;
@@ -346,6 +352,8 @@ void setup() {
         delay(100);
         relay.write(0x50);
         delay(100);
+        int rd = relay.read();
+        debugPrint("Relay type: " + String(rd, HEX));
         relay.write(0x51);
         delay(100);
         relayIsInitialized = true;
@@ -353,6 +361,9 @@ void setup() {
       
       relay.write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
 #endif
+      if (sceleton::hasGPIO1Relay._value == "true") {
+        digitalWrite(2, val);
+      }
     }
 
     virtual void showMessage(const char* dd, int totalMsToShow) {
@@ -414,7 +425,7 @@ void setup() {
         if (restartReportedAt < millis()) {
           restartReportedAt = millis() + 300;
           #ifndef ESP01
-          // Serial.println("Rebooting");
+          // debugSerial.println("Rebooting");
           if (screenController != NULL) {
             debugPrint("Rebooting");
             screen.clear();
@@ -502,19 +513,28 @@ void setup() {
       encoders[i].init();
     }
 
-    Serial.println("PINS initialized");
+    debugSerial.println("PINS initialized");
+  }
+
+  if (sceleton::hasPotenciometer._value == "true") {
+    nextPotentiometer = millis() + 100;
   }
 
   if (sceleton::hasMsp430._value == "true") {
-  // if (true) {
-    msp430 = new SoftwareSerial(D6, D5); 
+    msp430 = &Serial;
     msp430->begin(9600);
-    Serial.println("MSP430 initialized");
+    debugSerial.println("Initialized MSP430");
+    pinMode(D2, OUTPUT);
+    digitalWrite(D2, 1);
   }
+
 #endif
+  if (sceleton::hasGPIO1Relay._value == "true") {
+  }
 }
 
 unsigned long oldMicros = micros();
+uint32_t lastScreenRefresh = millis();
 
 uint16_t hours = 0;
 uint16_t mins = 0;
@@ -535,20 +555,20 @@ long lastLoopEnd = millis();
 
 void loop() {
   if (millis() - lastLoop > 50) {
-        Serial.println(String("Long main loop: ") + String(millis() - lastLoop, DEC) + " " + String(millis() - lastLoopEnd, DEC));
+        debugSerial.println(String("Long main loop: ") + String(millis() - lastLoop, DEC) + " " + String(millis() - lastLoopEnd, DEC));
   }
   lastLoop = millis();
 
   long st = millis();
 
   if (restartAt < st) {
-    // Serial.println("ESP.reset");
+    // debugSerial.println("ESP.reset");
     ESP.reset();
     ESP.restart();
   }
 
   if (interruptCounter > 0) {
-    Serial.println("1");
+    debugSerial.println("1");
     String toSend = String("{ \"type\": \"button\", ") + 
         "\"value\": " + (digitalRead(D7) == LOW ? "true" : "false") + ", " +  
         "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
@@ -560,10 +580,10 @@ void loop() {
 
 #ifndef ESP01
   if (sceleton::hasHX711._value == "true" && (millis() - lastWeighteningStarted) > 100 && hx711->readyToSend()) {
-    Serial.println("3");
+    debugSerial.println("3");
     lastWeighteningStarted = millis();
 
-    // Serial.println();
+    // debugSerial.println();
     long val = hx711->read();
 
     String toSend = String("{ \"type\": \"weight\", ") + 
@@ -578,7 +598,7 @@ void loop() {
 #endif
 
   if (bme != NULL && ((millis() - lastTemp) > 2000)) {
-    Serial.println("4");
+    debugSerial.println("4");
     lastTemp = millis();
     float hum = bme->readHumidity();
     float temp = bme->readTemperature();
@@ -600,12 +620,12 @@ void loop() {
       sceleton::send(toSend);
 
     }
-    // Serial.printf("[%f] [%f] [%f]\n", h, t, p);
+    // debugSerial.printf("[%f] [%f] [%f]\n", h, t, p);
   }
 
 #ifndef ESP01
   if (oneWire != NULL) {
-    Serial.println("5");
+    debugSerial.println("5");
     if (millis() > nextRequest) {
       oneWire->reset();
       oneWire->write(0xCC);   //Обращение ко всем датчикам
@@ -613,7 +633,7 @@ void loop() {
       nextRead = millis() + interval;
       nextRequest = millis() + interval*2;
     } else if (millis() > nextRead) {
-      // Serial.println("Temp reading");
+      // debugSerial.println("Temp reading");
       oneWire->reset();
       oneWire->select(deviceAddress);
       oneWire->write(0xBE);            //Считывание значения с датчика
@@ -625,7 +645,7 @@ void loop() {
           debugPrint("Wrong temp: " + String(wrongTempValueReceivedCnt, DEC));
         }
         if (wrongTempValueReceivedCnt == 40) {
-          // Serial.println("Rebooting because of bad temp");
+          // debugSerial.println("Rebooting because of bad temp");
           sceleton::sink->reboot();
         }
       } else {
@@ -652,26 +672,29 @@ void loop() {
 
 #ifndef ESP01
   if (screenController != NULL) {
-    screen.clear();
-
-    if (sceleton::initializedWiFi && timeRetreivedInMs != 0) {
-      if (isScreenEnabled) {
-        // UTC is the time at Greenwich Meridian (GMT)
-        // print the hour (86400 equals secs per day)
-        nowMs = initialUnixTime * 1000ull + ((uint64_t)millis() - (uint64_t)timeRetreivedInMs);
-        nowMs += 3*60*60*1000; // Timezone (UTC+3)
-
-        uint32_t epoch = nowMs/1000ull;
-        hours = (epoch % 86400L) / 3600;
-        mins = (epoch % 3600) / 60;
-
-        screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
-      }
-      screenController->refreshAll();
-    } else {
+    if (millis() > (lastScreenRefresh + 15)) {
+      lastScreenRefresh = millis();
       screen.clear();
-      screen.set(0, 0, OnePixelAt(Rectangle(0, 0, 32, 8), (millis() / 30) % (32*8)), true);
-      screenController->refreshAll();
+
+      if (sceleton::initializedWiFi && timeRetreivedInMs != 0) {
+        if (isScreenEnabled) {
+          // UTC is the time at Greenwich Meridian (GMT)
+          // print the hour (86400 equals secs per day)
+          nowMs = initialUnixTime * 1000ull + ((uint64_t)millis() - (uint64_t)timeRetreivedInMs);
+          nowMs += 3*60*60*1000; // Timezone (UTC+3)
+
+          uint32_t epoch = nowMs/1000ull;
+          hours = (epoch % 86400L) / 3600;
+          mins = (epoch % 3600) / 60;
+
+          screen.showTime(nowMs / dayInMs, nowMs % dayInMs);
+        }
+        screenController->refreshAll();
+      } else {
+        screen.clear();
+        screen.set(0, 0, OnePixelAt(Rectangle(0, 0, 32, 8), (millis() / 30) % (32*8)), true);
+        screenController->refreshAll();
+      }
     }
   }
 #endif
@@ -717,13 +740,13 @@ void loop() {
             if (decodedStr.indexOf(remote.keys[k].bin) != -1) {
               // Key pressed!
               recognized = &(remote.keys[k]);
-              //Serial.println(String(recognized->value));
+              //debugSerial.println(String(recognized->value));
 
               recognizedRemote = &remote;
               kk = k;
 
               String keyVal(remote.keys[k].value);
-              Serial.println(keyVal);
+              debugSerial.println(keyVal);
 
               String toSend = String("{ \"type\": \"ir_key\", ") + 
                 "\"remote\": \"" + String(recognizedRemote->name) + "\", " + 
@@ -740,7 +763,7 @@ void loop() {
 
         if (recognized == NULL) {
           // debugPrint(decoded);
-          Serial.println("Unrecognized");
+          debugSerial.println("Unrecognized");
         }
       }
 
@@ -748,43 +771,92 @@ void loop() {
     }
   }
 
-  if (msp430 != NULL) {
+  if (msp430 != NULL && sceleton::webSocketClient.get() != NULL) {
     for (;msp430->available() > 0;) {
       int ch = msp430->read();
+      lastMsp430Ping = millis();
       const char encoders[] = { 'A', 'G', 'O' };
       const char* encoderNames[] = { "left", "middle", "right" };
-      for (int enc = 0; enc < __countof(encoders); ++enc) {
-        const char* ss = NULL;
-        if (encoders[enc] + 1 == ch) {
-          ss = "rotate_cw";
-        } else if (encoders[enc] + 2 == ch) {
-          ss = "rotate_ccw";
-        } else if (encoders[enc] + 3 == ch) {
-          ss = "click";
-        }
-        if (ss != NULL) {
-          String s = "encoder_";
-          s += encoderNames[enc];
-          String toSend = String("{ \"type\": \"ir_key\", ") + 
-            "\"remote\": \"" + s + "\", " + 
-            "\"key\": \"" + ss + "\", " +  
-            "\"timeseq\": "  + String(millis(), DEC)  + " " +  
-            "}";
-          Serial.printf("> %s %s\n", s.c_str(), ss);
+      if (ch == 'Z') {
+        // restart
+        debugPrint("MSP430 started");
+        debugSerial.println("MSP430 started");
+      } else if (ch == '0') {
+        // ping
+      } else {
+        // Encoders
+        for (int enc = 0; enc < __countof(encoders); ++enc) {
+          const char* ss = NULL;
+          if (encoders[enc] + 1 == ch) {
+            ss = "rotate_cw";
+          } else if (encoders[enc] + 2 == ch) {
+            ss = "rotate_ccw";
+          } else if (encoders[enc] + 3 == ch) {
+            ss = "click";
+          }
+          if (ss != NULL) {
+            String s = "encoder_";
+            s += encoderNames[enc];
+            String toSend = String("{ \"type\": \"ir_key\", ") + 
+              "\"remote\": \"" + s + "\", " + 
+              "\"key\": \"" + ss + "\", " +  
+              "\"timeseq\": "  + String(millis(), DEC)  + " " +  
+              "}";
+            // debugSerial.printf("> %s %s\n", s.c_str(), ss);
 
-          sceleton::send(toSend);
+            sceleton::send(toSend);
+          }
         }
       }
     }
+    if (millis() - lastMsp430Ping > 3000) {
+      // debugPrint("MSP430 didn't ping us for 3seconds, let's restart it");
+      digitalWrite(D2, 0);
+      debugSerial.println("MSP430 didn't ping us for 3seconds, let's restart it");
+      debugPrint("MSP430 didn't ping us for 3seconds, let's restart it");
+      delay(50);
+      digitalWrite(D2, 1);
+      lastMsp430Ping = millis();
+    }
   }
 #endif
-  // Serial.println(String(millis(), DEC));
+  // debugSerial.println(String(millis(), DEC));
 #ifndef ESP01
   // Process encoders
   for (int i = 0; i < __countof(encoders); ++i) {
     encoders[i].process();
   }
   Encoder::cont();
+
+  if (sceleton::hasPotenciometer._value == "true" && (nextPotentiometer < millis())) {
+    nextPotentiometer = millis() + 50;
+    int readingIn = analogRead(A0);
+    potentiometerValues[potentiometerIndex++ % __countof(potentiometerValues)] = readingIn;
+
+    String s = "";
+    int32_t total = 0;
+    for (uint8_t ind = 0; ind < __countof(potentiometerValues); ++ind) {
+      total += potentiometerValues[ind];
+      s += " ";
+      s += String(potentiometerValues[ind], DEC);
+    }
+
+    const int32_t maxVol = 939;
+    const int32_t minVol = 830;
+    const int32_t distance = (maxVol - minVol);
+    readingIn = 100 - (std::min(maxVol, std::max(minVol, (int32_t)(total/__countof(potentiometerValues)))) - minVol) * 100 / distance;
+
+    if (reportedPotentiometer != readingIn) {
+      if (sceleton::webSocketClient.get() != NULL) {
+        String toSend = String("{ \"type\": \"potentiometer\", ") + 
+            "\"value\": \"" + readingIn + "\", " +  
+            "\"timeseq\": "  + String(millis(), DEC)  + " " +  
+            "}";
+        sceleton::send(toSend);
+        reportedPotentiometer = readingIn;
+      }
+    }
+  }
 #endif
 
   lastLoopEnd = millis();
