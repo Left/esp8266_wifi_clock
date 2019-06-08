@@ -10,10 +10,6 @@
 #include <IRutils.h>
 #endif
 
-#ifndef ESP01
-#include <SoftwareSerial.h>
-#endif
-
 #include "worklogic.h"
 
 #ifndef ESP01
@@ -201,7 +197,7 @@ const Remote* remotes[] = {
 boolean invertRelayState = false;
 
 boolean relayIsInitialized = false;
-SoftwareSerial relay(D1, D0); // RX, TX
+HardwareSerial& relay = Serial; // RX, TX
 
 OneWire* oneWire;
 
@@ -672,7 +668,7 @@ void loop() {
 
 #ifndef ESP01
   if (screenController != NULL) {
-    if (millis() > (lastScreenRefresh + 15)) {
+    if (millis() > (lastScreenRefresh + 20)) {
       lastScreenRefresh = millis();
       screen.clear();
 

@@ -202,6 +202,7 @@ std::vector<uint32_t> decodeRGBWString(const char* val) {
 }
 
 bool wasConnected = false;
+uint32_t saveBrightnessAt = 0x7FFFFFFF;
 
 void setup(Sink* _sink) {
     sink = _sink;
@@ -378,13 +379,13 @@ void setup(Sink* _sink) {
                     } else if (type == "screenEnable") {
                         int val = root["value"].as<boolean>();
                         sink->enableScreen(val);
-                        brightness.save();
+                        saveBrightnessAt = millis() + 1000; // In 1 second, save brightness
                     } else if (type == "brightness") {
                         int val = root["value"].as<int>();
                         val = std::max(std::min(val, 100), 0);
                         sink->setBrightness(val);
                         brightness._value = String(val, DEC);
-                        brightness.save();
+                        saveBrightnessAt = millis() + 1000; // In 1 second, save brightness
                     #endif
                     } else if (type == "additional-info") {
                         // 
@@ -593,6 +594,11 @@ void loop() {
         if (rebootAt <= millis()) {
             sink->reboot();
         }
+    }
+
+    if (saveBrightnessAt < millis()) {
+        brightness.save();
+        saveBrightnessAt = 0x7FFFFFFF;
     }
 /*
     if (millis() % 1000 == 0) {
