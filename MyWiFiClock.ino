@@ -10,6 +10,10 @@
 #include <IRutils.h>
 #endif
 
+#ifndef ESP01
+#include <SoftwareSerial.h>
+#endif
+
 #include "worklogic.h"
 
 #ifndef ESP01
@@ -197,7 +201,7 @@ const Remote* remotes[] = {
 boolean invertRelayState = false;
 
 boolean relayIsInitialized = false;
-HardwareSerial& relay = Serial; // RX, TX
+SoftwareSerial relay(D1, D0); // RX, TX
 
 OneWire* oneWire;
 
@@ -348,8 +352,6 @@ void setup() {
         delay(100);
         relay.write(0x50);
         delay(100);
-        int rd = relay.read();
-        debugPrint("Relay type: " + String(rd, HEX));
         relay.write(0x51);
         delay(100);
         relayIsInitialized = true;
@@ -444,6 +446,8 @@ void setup() {
       return isScreenEnabled; 
     }
   };
+
+  relay.enableRx(false); // We don't want to receive from it
 
   sceleton::setup(new SinkImpl());
 

@@ -25,7 +25,7 @@ static const uint8_t D9   = 3;
 static const uint8_t D10  = 1;
 #endif
 
-HardwareSerial& debugSerial = Serial1;
+HardwareSerial& debugSerial = Serial;
 
 void debugPrint(const String& str);
 
@@ -101,8 +101,8 @@ public:
 
 DevParam deviceName("device.name", "Device Name", String("ESP_") + ESP.getChipId());
 DevParam deviceNameRussian("device.name.russian", "Device Name (russian)", "");
-DevParam wifiName("wifi.name", "WiFi SSID", "");
-DevParam wifiPwd("wifi.pwd", "WiFi Password", "", true);
+DevParam wifiName("wifi.name", "WiFi SSID", "rabbithole");
+DevParam wifiPwd("wifi.pwd", "WiFi Password", "196flat78", true);
 DevParam websocketServer("websocket.server", "WebSocket server", "192.168.10.102");
 DevParam websocketPort("websocket.port", "WebSocket port", "8080");
 #ifndef ESP01
@@ -124,6 +124,9 @@ DevParam hasMsp430("hasMsp430WithEncoders", "Has MSP430 with encoders", "false")
 DevParam relayNames("relay.names", "Relay names, separated by ;", "");
 DevParam hasGPIO1Relay("hasGPIO1Relay", "Has GPIO1 Relay", "false");
 DevParam hasPotenciometer("hasPotenciometer", "Has potenciometer", "false");
+DevParam secondsBeforeRestart("secondsBeforeRestart", "Seconds before restart", "60000");
+
+uint32_t msBeforeRestart = atoi(secondsBeforeRestart._value.c_str());
 
 DevParam* devParams[] = { 
     &deviceName, 
@@ -150,7 +153,8 @@ DevParam* devParams[] = {
 #endif
     &relayNames,
     &hasGPIO1Relay,
-    &hasPotenciometer
+    &hasPotenciometer,
+    &secondsBeforeRestart
 }; 
 Sink* sink = new Sink();
 boolean initializedWiFi = false;
@@ -220,6 +224,9 @@ void setup(Sink* _sink) {
             d->_value = readVal;
         }
     }
+
+    msBeforeRestart = atoi(secondsBeforeRestart._value.c_str());
+
     debugSerial.println();
     debugSerial.println("Initialized in " + String(millis() - was, DEC));
     debugSerial.println(wifiName._value.c_str());
@@ -580,11 +587,11 @@ void loop() {
 #endif
 
     if (initializedWiFi) {
-        if (millis() - lastReceived > 30000) {
+        if (millis() - lastReceived > msBeforeRestart) {
             //debugSerial.println("Rebooting...");
             if (reportedGoingToReconnect <= lastReceived) {
-                sink->showMessage("30 секунд без связи с сервером, перезагружаемся", 30000);
-                debugSerial.println("30 seconds w/o connect to server");
+                sink->showMessage((String(msBeforeRestart / 1000, DEC) + " секунд без связи с сервером, перезагружаемся").c_str(), 3000);
+                debugSerial.println(String(msBeforeRestart / 1000, DEC) + " seconds w/o connect to server");
                 reportedGoingToReconnect = millis();
             }
 
