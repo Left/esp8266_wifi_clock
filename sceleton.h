@@ -7,7 +7,7 @@
 #include <WebSockets.h>
 #include <WebSocketsClient.h>
 #include <ESPAsyncWebServer.h>
-#include <ArduinoOTA.h>
+// #include <ArduinoOTA.h>
 
 // #define ESP01
 
@@ -47,12 +47,6 @@ public:
     virtual boolean screenEnabled() { return false; }
 };
 
-void stringToFile(const String& fileName, const String& value) {
-    File f = SPIFFS.open(fileName.c_str(), "w");
-    f.write((uint8_t*)value.c_str(), value.length());
-    f.close();
-}
-
 String fileToString(const String& fileName) {
     if (SPIFFS.exists(fileName.c_str())) {
         File f = SPIFFS.open(fileName.c_str(), "r");
@@ -83,48 +77,46 @@ void send(const String& toSend) {
 class DevParam {
 public:
     const char* _name;
+    const char* _jsonName;
     const char* _description;
     String _value;
     boolean _password;
 
-    DevParam(const char* name, const char* description, String value, boolean pwd=false) :
+    DevParam(const char* name, const char* jsonName, const char* description, String value, boolean pwd=false) :
         _name(name),
+        _jsonName(jsonName),
         _description(description),
         _value(value),
         _password(pwd) {
     }
-
-    void save() {
-        stringToFile(String(_name), _value);
-    }
 };
 
-DevParam deviceName("device.name", "Device Name", String("ESP_") + ESP.getChipId());
-DevParam deviceNameRussian("device.name.russian", "Device Name (russian)", "");
-DevParam wifiName("wifi.name", "WiFi SSID", "rabbithole");
-DevParam wifiPwd("wifi.pwd", "WiFi Password", "196flat78", true);
-DevParam websocketServer("websocket.server", "WebSocket server", "192.168.10.102");
-DevParam websocketPort("websocket.port", "WebSocket port", "8080");
+DevParam deviceName("device.name", "name", "Device Name", String("ESP_") + ESP.getChipId());
+DevParam deviceNameRussian("device.name.russian", "rname", "Device Name (russian)", "");
+DevParam wifiName("wifi.name", "wifi", "WiFi SSID", "");
+DevParam wifiPwd("wifi.pwd", "wfpwd", "WiFi Password", "", true);
+DevParam websocketServer("websocket.server", "ws", "WebSocket server", "192.168.10.102");
+DevParam websocketPort("websocket.port", "wsport", "WebSocket port", "8080");
 #ifndef ESP01
-DevParam invertRelayControl("invertRelay", "Invert relays", "false");
-DevParam hasScreen("hasScreen", "Has screen", "false");
-DevParam hasScreen180Rotated("hasScreen180Rotated", "Screen is rotated on 180", "false");
-DevParam hasHX711("hasHX711", "Has HX711 (weight detector)", "false");
-DevParam hasIrReceiver("hasIrReceiver", "Has infrared receiver", "false");
-DevParam hasDS18B20("hasDS18B20", "Has DS18B20 (temp sensor)", "false");
+DevParam invertRelayControl("invertRelay", "invrelay", "Invert relays", "false");
+DevParam hasScreen("hasScreen", "screen", "Has screen", "false");
+DevParam hasScreen180Rotated("hasScreen180Rotated", "screen180", "Screen is rotated on 180", "false");
+DevParam hasHX711("hasHX711", "hx711", "Has HX711 (weight detector)", "false");
+DevParam hasIrReceiver("hasIrReceiver", "ir", "Has infrared receiver", "false");
+DevParam hasDS18B20("hasDS18B20", "ds18b20", "Has DS18B20 (temp sensor)", "false");
 #endif
-DevParam hasBME280("hasBME280", "Has BME280 (temp & humidity sensor)", "false");
-DevParam hasLedStripe("hasLedStripe", "Has RGBW Led stripe", "false");
+DevParam hasBME280("hasBME280", "bme280", "Has BME280 (temp & humidity sensor)", "false");
+DevParam hasLedStripe("hasLedStripe", "ledstrip", "Has RGBW Led stripe", "false");
 #ifndef ESP01
-DevParam hasButton("hasButton", "Has button on D7", "false");
-DevParam brightness("brightness", "Brightness [0..100]", "0");
-DevParam hasEncoders("hasEncoders", "Has encoders", "false");
-DevParam hasMsp430("hasMsp430WithEncoders", "Has MSP430 with encoders", "false");
+DevParam hasButton("hasButton", "d7btn", "Has button on D7", "false");
+DevParam brightness("brightness", "bright", "Brightness [0..100]", "0");
+DevParam hasEncoders("hasEncoders", "enc", "Has encoders", "false");
+DevParam hasMsp430("hasMsp430WithEncoders", "msp430", "Has MSP430 with encoders", "false");
 #endif
-DevParam relayNames("relay.names", "Relay names, separated by ;", "");
-DevParam hasGPIO1Relay("hasGPIO1Relay", "Has GPIO1 Relay", "false");
-DevParam hasPotenciometer("hasPotenciometer", "Has potenciometer", "false");
-DevParam secondsBeforeRestart("secondsBeforeRestart", "Seconds before restart", "60000");
+DevParam relayNames("relay.names", "relays", "Relay names, separated by ;", "");
+DevParam hasGPIO1Relay("hasGPIO1Relay", "gpio1relay", "Has GPIO1 Relay", "false");
+DevParam hasPotenciometer("hasPotenciometer", "potent", "Has potenciometer", "false");
+DevParam secondsBeforeRestart("secondsBeforeRestart", "watchdog", "Seconds before restart", "60000");
 
 uint32_t msBeforeRestart = atoi(secondsBeforeRestart._value.c_str());
 
@@ -187,6 +179,33 @@ String encodeRGBWString(const std::vector<uint32_t>& val) {
     return res;
 }
 
+void saveSettings() {
+    uint32_t t = millis();
+    debugSerial.println("Saving settings...");
+
+    DynamicJsonDocument jsonBuffer(1000);
+    JsonObject root = jsonBuffer.to<JsonObject>();
+
+    for (DevParam* d : devParams) {
+        root[d->_jsonName] = d->_value;
+    }
+
+    size_t sz = measureJsonPretty(root);
+    char* buf = (char*)malloc(sz + 10);
+    memset(buf, 0, sz+1);
+
+    serializeJson(root, buf, sz);
+
+    debugSerial.println("Settings:\n" + String(buf) + "\n\n");
+
+    File f = SPIFFS.open("settings.json", "w");
+    f.write((uint8_t*)buf, sz);
+    f.close();
+    free(buf);
+
+    debugSerial.println("Saved settings in " + String((millis() - t), DEC));
+}
+
 std::vector<uint32_t> decodeRGBWString(const char* val) {
     std::vector<uint32_t> resArr;
     for (;;) {
@@ -217,17 +236,26 @@ void setup(Sink* _sink) {
     SPIFFS.begin();
 
     long was = millis();
-    // Read initial settings
-    for (DevParam* d : devParams) {
-        String readVal = fileToString(String(d->_name));
-        if (readVal.length() > 0) {
-            d->_value = readVal;
+
+    debugSerial.println("\n=====================");
+
+    {   // Read initial settings
+        DynamicJsonDocument jsonBuffer(1000);
+        String readVal = fileToString("settings.json");
+        debugSerial.println(readVal);
+        DeserializationError error = deserializeJson(jsonBuffer, readVal.c_str(), readVal.length());
+        if (error == DeserializationError::Ok) {
+            const JsonObject &root = jsonBuffer.as<JsonObject>();
+            for (DevParam* d : devParams) {
+                d->_value = (const char*) (root[d->_jsonName]);
+            }
+        } else {
+            debugSerial.println("No settings read, use defaults");    
         }
     }
 
     msBeforeRestart = atoi(secondsBeforeRestart._value.c_str());
 
-    debugSerial.println();
     debugSerial.println("Initialized in " + String(millis() - was, DEC));
     debugSerial.println(wifiName._value.c_str());
     debugSerial.println(wifiPwd._value.c_str());
@@ -277,6 +305,7 @@ void setup(Sink* _sink) {
                     break;
                 }
                 case WStype_CONNECTED: {
+                    reconnectWebsocketAt = 0x7FFFFFFF;  // No need to reconnect anymore
                     debugSerial.println("Connected to server");
                     lastReceived = millis();
                     wasConnected = true;
@@ -340,7 +369,7 @@ void setup(Sink* _sink) {
                 }
                 case WStype_TEXT: {
                     // debugSerial.printf("[%u] get Text: %s\n", payload);
-                    DynamicJsonDocument jsonBuffer;
+                    DynamicJsonDocument jsonBuffer(1000);
 
                     DeserializationError error = deserializeJson(jsonBuffer, payload);
 
@@ -367,12 +396,7 @@ void setup(Sink* _sink) {
                         sink->switchRelay(id, sw);
                         reportRelayState(id);
                     } else if (type == "setProp") {
-                        for (DevParam* d : devParams) {
-                            if (String(d->_name) == root["prop"]) {
-                                d->_value = (const char*)(root["value"]);
-                                d->save();
-                            }
-                        }
+                        saveSettings();
                     } else if (type == "show") {
                         sink->showMessage(root["text"], root["totalMsToShow"].as<int>());
                     } else if (type == "tune") {
@@ -417,7 +441,7 @@ void setup(Sink* _sink) {
                     if (WiFi.status() == WL_CONNECTED && wasConnected) {
                         wasConnected = false;
                         debugSerial.println("Disconnected from server " + String(length, DEC));
-                        reconnectWebsocketAt = millis() + 10000; // In 1 second, let's try to reconnect
+                        reconnectWebsocketAt = millis() + 2000; // In 2 second, let's try to reconnect
                     }
                     break;
                 }
@@ -441,7 +465,6 @@ void setup(Sink* _sink) {
                 if (!d->_password || val.length() > 0) {
                     if (d->_value != val) {
                         d->_value = val;
-                        d->save();
                         needReboot = true;
                     }
                 }
@@ -449,6 +472,7 @@ void setup(Sink* _sink) {
         }
         
         if (needReboot) {
+            saveSettings();
             request->send(200, "text/html", "Settings changed, rebooting...");  
             sink->reboot();
         } else {
@@ -488,8 +512,9 @@ void setup(Sink* _sink) {
 
     // ArduinoOTA.setPort(8266);
     // set host name
-    ArduinoOTA.setHostname(deviceName._value.c_str());
+    // ArduinoOTA.setHostname(deviceName._value.c_str());
 
+/*
     ArduinoOTA.onStart([]() {
         // debugSerial.println("Start OTA");  //  "Начало OTA-апдейта"
         sink->showMessage("Updating...", 10000);
@@ -520,6 +545,7 @@ void setup(Sink* _sink) {
             //  "Ошибка при завершении OTA-апдейта"
         }
     });
+*/
     // debugSerial.println("ArduinoOTA.begin");
 }
 
@@ -528,7 +554,7 @@ int32_t lastWiFiState = millis();
 int32_t lastLoop = millis();
 
 int32_t oldStatus = WiFi.status();
-int32_t lastReconnect = millis();
+int32_t nextReconnect = millis();
 
 void loop() {
     if (millis() - lastLoop > 50) {
@@ -536,11 +562,11 @@ void loop() {
     }
     lastLoop = millis();
 
-    if (WiFi.status() != WL_CONNECTED && (millis() - lastReconnect) >= 7000) {
-        lastReconnect = millis();
+    if (WiFi.status() != WL_CONNECTED && (millis() > nextReconnect)) {
         debugSerial.println(String("WiFi.status() check: ") + WiFi.status());
         bool ret = WiFi.reconnect();
-        debugSerial.println(String("Reconnect returned ") + ret);
+        debugSerial.println(String("Reconnect returned ") + String(ret, DEC));
+        nextReconnect = millis() + (ret ? 3000 : 300);
     }
 
     if (oldStatus != WiFi.status()) {
@@ -554,9 +580,9 @@ void loop() {
         }
 
         if (WiFi.status() == WL_CONNECTED) {
-            debugSerial.println(String("Connected, IP:") + WiFi.localIP().toString());
+            debugSerial.println(String("Connected to WiFi, IP:") + WiFi.localIP().toString());
             reconnectWebsocketAt = millis() + 5; // Wait 1 ms and connect to websocket
-            ArduinoOTA.begin(); // Begin OTA immediately
+            // ArduinoOTA.begin(); // Begin OTA immediately
             initializedWiFi = true;
         }
     }
@@ -565,25 +591,35 @@ void loop() {
         if (webSocketClient.get() != NULL) {
             debugSerial.println(String("webSocketClient connecting to ") + websocketServer._value.c_str());
             webSocketClient->disconnect();
+            uint32_t ms = millis();
             webSocketClient->begin(websocketServer._value.c_str(), websocketPort._value.toInt(), "/esp");
-            reconnectWebsocketAt = 0x7FFFFFFF;
+            debugSerial.println(String("webSocketClient.begin() took " + String(millis() - ms, DEC)));
+            reconnectWebsocketAt = millis() + 5000; // 5 seconds should be enough to cennect WS
         }
     }
 
     if (initializedWiFi) {
-        ArduinoOTA.handle();
+        // ArduinoOTA.handle();
         if (webSocketClient.get() != NULL) {
+            uint32_t ms = millis();
             webSocketClient->loop();
+            if ((millis() - ms) > 10) {
+                debugSerial.println(String("webSocketClient.loop() took " + String(millis() - ms, DEC)));
+            }
         }
     }
 
 #ifndef ESP01
+/*
     if (millis() / 1000 != lastEachSecond) {
         lastEachSecond = millis() / 1000;
         // Set brightness if saved
-        sink->setBrightness(brightness._value.toInt());
+        if (sceleton::hasScreen._value == "true") {
+            sink->setBrightness(brightness._value.toInt());
+        }
         // vccVal = ESP.getVcc();
     }
+*/
 #endif
 
     if (initializedWiFi) {
@@ -604,7 +640,7 @@ void loop() {
     }
 
     if (saveBrightnessAt < millis()) {
-        brightness.save();
+        saveSettings();
         saveBrightnessAt = 0x7FFFFFFF;
     }
 /*

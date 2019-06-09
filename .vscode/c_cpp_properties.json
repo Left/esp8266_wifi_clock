@@ -10,7 +10,9 @@
                 "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.5.2/libraries/SoftwareSerial/src",
                 "/Users/vridosh/Documents/Arduino/libraries/ESPAsyncTCP-master",
                 "/Users/vridosh/Documents/Arduino/libraries/ESPAsyncWebServer",
-                "/Users/vridosh/Documents/Arduino/libraries/arduino_675163/src"
+                "/Users/vridosh/Documents/Arduino/libraries/arduino_675163/src",
+                "/Users/vridosh/Documents/Arduino/libraries/ArduinoJson/src",
+                "/Users/vridosh/Documents/Arduino/libraries/ArduinoJson/src/ArduinoJson"
             ],
             "browse": {
                 "limitSymbolsToIncludedHeaders": false,
@@ -22,7 +24,9 @@
                     "/Users/vridosh/Library/Arduino15/packages/esp8266/hardware/esp8266/2.5.2/libraries/SoftwareSerial/src",
                     "/Users/vridosh/Documents/Arduino/libraries/ESPAsyncTCP-master/src",
                     "/Users/vridosh/Documents/Arduino/libraries/ESPAsyncWebServer/src",
-                    "/Users/vridosh/Documents/Arduino/libraries/arduino_675163/src"
+                    "/Users/vridosh/Documents/Arduino/libraries/arduino_675163/src",
+                    "/Users/vridosh/Documents/Arduino/libraries/ArduinoJson/src",
+                    "/Users/vridosh/Documents/Arduino/libraries/ArduinoJson/src/ArduinoJson"
                 ]
             },
             "macFrameworkPath": [

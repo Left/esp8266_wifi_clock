@@ -199,9 +199,8 @@ const Remote* remotes[] = {
 
 #ifndef ESP01
 boolean invertRelayState = false;
-
 boolean relayIsInitialized = false;
-SoftwareSerial relay(D1, D0); // RX, TX
+SoftwareSerial* relay = NULL; 
 
 OneWire* oneWire;
 
@@ -348,16 +347,18 @@ void setup() {
       }
 
       if (!relayIsInitialized) {
-        relay.begin(9600);
+        relay = new SoftwareSerial(D1, D0); // RX, TX
+        relay->enableRx(false); // We don't want to receive from it
+        relay->begin(9600);
         delay(100);
-        relay.write(0x50);
+        relay->write(0x50);
         delay(100);
-        relay.write(0x51);
+        relay->write(0x51);
         delay(100);
         relayIsInitialized = true;
       }
       
-      relay.write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
+      relay->write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
 #endif
       if (sceleton::hasGPIO1Relay._value == "true") {
         digitalWrite(2, val);
@@ -446,8 +447,6 @@ void setup() {
       return isScreenEnabled; 
     }
   };
-
-  relay.enableRx(false); // We don't want to receive from it
 
   sceleton::setup(new SinkImpl());
 
