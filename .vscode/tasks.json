@@ -4,6 +4,46 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "Build Arduino",
+            "type": "shell",
+            "command": "~/Downloads/Arduino.app/Contents/MacOS/Arduino",
+            "args": [
+                "--upload",
+                "--verbose-build",
+                "--pref",
+                "build.path=build",
+                "MyWiFiClock.ino"
+            ],
+            "options": {
+                "cwd": "${workspaceRoot}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated",
+                "showReuseMessage": false
+            },
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": [
+                    "absolute"
+                ],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
+        },
+        {
             "label": "build_lcd_test",
             "type": "shell",
             "command": "g++",

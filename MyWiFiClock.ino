@@ -205,7 +205,7 @@ SoftwareSerial* relay = NULL;
 OneWire* oneWire;
 
 uint32_t lastMsp430Ping = millis();
-HardwareSerial* msp430; // RX, TX
+SoftwareSerial* msp430; // RX, TX
 #endif
 
 const int NUMPIXELS = 64;
@@ -338,7 +338,7 @@ void setup() {
     } 
 
     virtual void switchRelay(uint32_t id, bool val) {
-      // debugSerial.println(String("switchRelaySink: ") + (val ? "true" : "false"));
+      // debugSerial->println(String("switchRelaySink: ") + (val ? "true" : "false"));
 #ifndef ESP01
       int bit = 1 << id;
       currRelayState = currRelayState & ~bit;
@@ -424,7 +424,7 @@ void setup() {
         if (restartReportedAt < millis()) {
           restartReportedAt = millis() + 300;
           #ifndef ESP01
-          // debugSerial.println("Rebooting");
+          // debugSerial->println("Rebooting");
           if (screenController != NULL) {
             debugPrint("Rebooting");
             screen.clear();
@@ -512,7 +512,7 @@ void setup() {
       encoders[i].init();
     }
 
-    debugSerial.println("PINS initialized");
+    debugSerial->println("PINS initialized");
   }
 
   if (sceleton::hasPotenciometer._value == "true") {
@@ -520,9 +520,9 @@ void setup() {
   }
 
   if (sceleton::hasMsp430._value == "true") {
-    msp430 = &Serial;
+    msp430 = new SoftwareSerial(D1, D0); // RX, TX
     msp430->begin(9600);
-    debugSerial.println("Initialized MSP430");
+    debugSerial->println("Initialized MSP430");
     pinMode(D2, OUTPUT);
     digitalWrite(D2, 1);
   }
@@ -554,20 +554,20 @@ long lastLoopEnd = millis();
 
 void loop() {
   if (millis() - lastLoop > 50) {
-        debugSerial.println(String("Long main loop: ") + String(millis() - lastLoop, DEC) + " " + String(millis() - lastLoopEnd, DEC));
+        debugSerial->println(String("Long main loop: ") + String(millis() - lastLoop, DEC) + " " + String(millis() - lastLoopEnd, DEC));
   }
   lastLoop = millis();
 
   long st = millis();
 
   if (restartAt < st) {
-    // debugSerial.println("ESP.reset");
+    // debugSerial->println("ESP.reset");
     ESP.reset();
     ESP.restart();
   }
 
   if (interruptCounter > 0) {
-    debugSerial.println("1");
+    debugSerial->println("1");
     String toSend = String("{ \"type\": \"button\", ") + 
         "\"value\": " + (digitalRead(D7) == LOW ? "true" : "false") + ", " +  
         "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
@@ -579,10 +579,10 @@ void loop() {
 
 #ifndef ESP01
   if (sceleton::hasHX711._value == "true" && (millis() - lastWeighteningStarted) > 100 && hx711->readyToSend()) {
-    debugSerial.println("3");
+    debugSerial->println("3");
     lastWeighteningStarted = millis();
 
-    // debugSerial.println();
+    // debugSerial->println();
     long val = hx711->read();
 
     String toSend = String("{ \"type\": \"weight\", ") + 
@@ -597,7 +597,7 @@ void loop() {
 #endif
 
   if (bme != NULL && ((millis() - lastTemp) > 2000)) {
-    debugSerial.println("4");
+    debugSerial->println("4");
     lastTemp = millis();
     float hum = bme->readHumidity();
     float temp = bme->readTemperature();
@@ -619,12 +619,12 @@ void loop() {
       sceleton::send(toSend);
 
     }
-    // debugSerial.printf("[%f] [%f] [%f]\n", h, t, p);
+    // debugSerial->printf("[%f] [%f] [%f]\n", h, t, p);
   }
 
 #ifndef ESP01
   if (oneWire != NULL) {
-    debugSerial.println("5");
+    debugSerial->println("5");
     if (millis() > nextRequest) {
       oneWire->reset();
       oneWire->write(0xCC);   //Обращение ко всем датчикам
@@ -632,7 +632,7 @@ void loop() {
       nextRead = millis() + interval;
       nextRequest = millis() + interval*2;
     } else if (millis() > nextRead) {
-      // debugSerial.println("Temp reading");
+      // debugSerial->println("Temp reading");
       oneWire->reset();
       oneWire->select(deviceAddress);
       oneWire->write(0xBE);            //Считывание значения с датчика
@@ -644,7 +644,7 @@ void loop() {
           debugPrint("Wrong temp: " + String(wrongTempValueReceivedCnt, DEC));
         }
         if (wrongTempValueReceivedCnt == 40) {
-          // debugSerial.println("Rebooting because of bad temp");
+          // debugSerial->println("Rebooting because of bad temp");
           sceleton::sink->reboot();
         }
       } else {
@@ -739,13 +739,13 @@ void loop() {
             if (decodedStr.indexOf(remote.keys[k].bin) != -1) {
               // Key pressed!
               recognized = &(remote.keys[k]);
-              //debugSerial.println(String(recognized->value));
+              //debugSerial->println(String(recognized->value));
 
               recognizedRemote = &remote;
               kk = k;
 
               String keyVal(remote.keys[k].value);
-              debugSerial.println(keyVal);
+              debugSerial->println(keyVal);
 
               String toSend = String("{ \"type\": \"ir_key\", ") + 
                 "\"remote\": \"" + String(recognizedRemote->name) + "\", " + 
@@ -762,7 +762,7 @@ void loop() {
 
         if (recognized == NULL) {
           // debugPrint(decoded);
-          debugSerial.println("Unrecognized");
+          debugSerial->println("Unrecognized");
         }
       }
 
@@ -779,7 +779,7 @@ void loop() {
       if (ch == 'Z') {
         // restart
         debugPrint("MSP430 started");
-        debugSerial.println("MSP430 started");
+        debugSerial->println("MSP430 started");
       } else if (ch == '0') {
         // ping
       } else {
@@ -801,7 +801,7 @@ void loop() {
               "\"key\": \"" + ss + "\", " +  
               "\"timeseq\": "  + String(millis(), DEC)  + " " +  
               "}";
-            // debugSerial.printf("> %s %s\n", s.c_str(), ss);
+            // debugSerial->printf("> %s %s\n", s.c_str(), ss);
 
             sceleton::send(toSend);
           }
@@ -811,7 +811,7 @@ void loop() {
     if (millis() - lastMsp430Ping > 3000) {
       // debugPrint("MSP430 didn't ping us for 3seconds, let's restart it");
       digitalWrite(D2, 0);
-      debugSerial.println("MSP430 didn't ping us for 3seconds, let's restart it");
+      debugSerial->println("MSP430 didn't ping us for 3seconds, let's restart it");
       debugPrint("MSP430 didn't ping us for 3seconds, let's restart it");
       delay(50);
       digitalWrite(D2, 1);
@@ -819,7 +819,7 @@ void loop() {
     }
   }
 #endif
-  // debugSerial.println(String(millis(), DEC));
+  // debugSerial->println(String(millis(), DEC));
 #ifndef ESP01
   // Process encoders
   for (int i = 0; i < __countof(encoders); ++i) {
