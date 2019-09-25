@@ -583,15 +583,18 @@ public:
         pinMode(DATA_PIN, OUTPUT);
         pinMode(CLK_PIN, OUTPUT);
 
-        digitalWrite(CS_PIN, HIGH);
-        sendCmdAll(OP_DISPLAYTEST, 0);
-        sendCmdAll(OP_SCANLIMIT, 7);
-        sendCmdAll(OP_DECODEMODE, 0);
-        sendCmdAll(OP_SHUTDOWN, 1);
         // sendCmdAll(OP_INTENSITY, 0); // minimum brightness
     }
 
     void refreshAll() {
+        if (millis() % 500 == 0) {
+            digitalWrite(CS_PIN, HIGH);
+            sendCmdAll(OP_DISPLAYTEST, 0);
+            sendCmdAll(OP_SCANLIMIT, 7);
+            sendCmdAll(OP_DECODEMODE, 0);
+            sendCmdAll(OP_SHUTDOWN, 1);
+        }
+
         LcdScreen screen2;
         int w = screen.width();
         int h = screen.height();

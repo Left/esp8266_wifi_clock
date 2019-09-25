@@ -1,0 +1,55 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "/Users/vridosh/Documents/Arduino/NodeServer"
+		},
+		{
+			"path": "/Users/vridosh/Arduino/FirstProj"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"random": "cpp",
+			"cstddef": "cpp",
+			"*.ipp": "cpp",
+			"chrono": "cpp",
+			"bitset": "cpp",
+			"set": "cpp",
+			"regex": "cpp",
+			"system_error": "cpp",
+			"queue": "cpp",
+			"stack": "cpp",
+			"array": "cpp",
+			"type_traits": "cpp",
+			"utility": "cpp",
+			"__bit_reference": "cpp",
+			"__functional_base": "cpp",
+			"atomic": "cpp",
+			"deque": "cpp",
+			"functional": "cpp",
+			"iterator": "cpp",
+			"limits": "cpp",
+			"memory": "cpp",
+			"ratio": "cpp",
+			"tuple": "cpp",
+			"vector": "cpp",
+			"__hash_table": "cpp",
+			"__split_buffer": "cpp",
+			"__tree": "cpp",
+			"hash_map": "cpp",
+			"hash_set": "cpp",
+			"forward_list": "cpp",
+			"initializer_list": "cpp",
+			"list": "cpp",
+			"map": "cpp",
+			"string": "cpp",
+			"string_view": "cpp",
+			"unordered_map": "cpp",
+			"unordered_set": "cpp",
+			"valarray": "cpp"
+		}
+	}
+}

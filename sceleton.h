@@ -11,7 +11,7 @@
 
 // #define ESP01
 
-#ifdef ESP01
+// #ifdef ESP01
 static const uint8_t D0   = 16;
 static const uint8_t D1   = 5;
 static const uint8_t D2   = 4;
@@ -23,9 +23,9 @@ static const uint8_t D7   = 13;
 static const uint8_t D8   = 15;
 static const uint8_t D9   = 3;
 static const uint8_t D10  = 1;
-#endif
+// #endif
 
-HardwareSerial* debugSerial;
+Stream* debugSerial;
 
 void debugPrint(const String& str);
 
@@ -42,6 +42,8 @@ public:
     virtual void setTime(uint32_t unixTime) {}
     virtual void setLedStripe(std::vector<uint32_t> colors) {}
     virtual const std::vector<uint32_t>& getLedStripe() {}
+    virtual void setD0PWM(uint32_t val) {}
+    virtual void playMp3(uint32_t index) {}
     virtual void reboot() {}
     virtual void enableScreen(const boolean enabled) {}
     virtual boolean screenEnabled() { return false; }
@@ -50,6 +52,7 @@ public:
 String fileToString(const String& fileName) {
     if (SPIFFS.exists(fileName.c_str())) {
         File f = SPIFFS.open(fileName.c_str(), "r");
+        debugSerial->println(f.size());
         std::vector<uint8_t> buf(f.size() + 1, 0);
         if (f && f.size()) {
         f.read((uint8_t*)(&buf[0]), buf.size());
@@ -62,7 +65,7 @@ String fileToString(const String& fileName) {
 
 const String typeKey("type");
 
-const char* firmwareVersion = "00.21";
+const char* firmwareVersion = "00.22";
 
 std::auto_ptr<AsyncWebServer> setupServer;
 std::auto_ptr<WebSocketsClient> webSocketClient;
@@ -92,10 +95,11 @@ public:
 };
 
 DevParam deviceName("device.name", "name", "Device Name", String("ESP_") + ESP.getChipId());
-DevParam deviceNameRussian("device.name.russian", "rname", "Device Name (russian)", "");
-DevParam wifiName("wifi.name", "wifi", "WiFi SSID", "");
-DevParam wifiPwd("wifi.pwd", "wfpwd", "WiFi Password", "", true);
-DevParam websocketServer("websocket.server", "ws", "WebSocket server", "192.168.10.102");
+DevParam deviceNameRussian("device.name.russian", "rname", "Device Name (russian)", String("ESP_") + ESP.getChipId());
+DevParam wifiName("wifi.name", "wifi", "WiFi SSID", "YYYY");
+DevParam wifiPwd("wifi.pwd", "wfpwd", "WiFi Password", "XXXX", true);
+DevParam logToHardwareSerial("debug.to.serial", "debugserial", "Print debug to serial", "true");
+DevParam websocketServer("websocket.server", "ws", "WebSocket server", "192.168.121.38");
 DevParam websocketPort("websocket.port", "wsport", "WebSocket port", "8080");
 #ifndef ESP01
 DevParam invertRelayControl("invertRelay", "invrelay", "Invert relays", "false");
@@ -104,6 +108,7 @@ DevParam hasScreen180Rotated("hasScreen180Rotated", "screen180", "Screen is rota
 DevParam hasHX711("hasHX711", "hx711", "Has HX711 (weight detector)", "false");
 DevParam hasIrReceiver("hasIrReceiver", "ir", "Has infrared receiver", "false");
 DevParam hasDS18B20("hasDS18B20", "ds18b20", "Has DS18B20 (temp sensor)", "false");
+DevParam hasDFPlayer("hasDFPlayer", "dfplayer", "Has DF player", "false");
 #endif
 DevParam hasBME280("hasBME280", "bme280", "Has BME280 (temp & humidity sensor)", "false");
 DevParam hasLedStripe("hasLedStripe", "ledstrip", "Has RGBW Led stripe", "false");
@@ -112,10 +117,12 @@ DevParam hasButton("hasButton", "d7btn", "Has button on D7", "false");
 DevParam brightness("brightness", "bright", "Brightness [0..100]", "0");
 DevParam hasEncoders("hasEncoders", "enc", "Has encoders", "false");
 DevParam hasMsp430("hasMsp430WithEncoders", "msp430", "Has MSP430 with encoders", "false");
+DevParam hasPotenciometer("hasPotenciometer", "potent", "Has potenciometer", "false");
+DevParam hasSolidStateRelay("hasSSR", "ssr", "Has Solid State Relay (D1, D2, D5, D6)", "false");
 #endif
 DevParam relayNames("relay.names", "relays", "Relay names, separated by ;", "");
 DevParam hasGPIO1Relay("hasGPIO1Relay", "gpio1relay", "Has GPIO1 Relay", "false");
-DevParam hasPotenciometer("hasPotenciometer", "potent", "Has potenciometer", "false");
+DevParam hasPWMOnD0("hasPWMOnD0", "pwmOnD0", "Has PWM on D0", "false");
 DevParam secondsBeforeRestart("secondsBeforeRestart", "watchdog", "Seconds before restart", "60000");
 
 uint32_t msBeforeRestart = atoi(secondsBeforeRestart._value.c_str());
@@ -125,6 +132,7 @@ DevParam* devParams[] = {
     &deviceNameRussian,
     &wifiName, 
     &wifiPwd, 
+    &logToHardwareSerial,
     &websocketServer, 
     &websocketPort, 
 #ifndef ESP01
@@ -134,6 +142,7 @@ DevParam* devParams[] = {
     &hasHX711,
     &hasIrReceiver,
     &hasDS18B20,
+    &hasDFPlayer,
 #endif
     &hasBME280,
     &hasLedStripe,
@@ -145,7 +154,11 @@ DevParam* devParams[] = {
 #endif
     &relayNames,
     &hasGPIO1Relay,
+#ifndef ESP01
     &hasPotenciometer,
+    &hasSolidStateRelay,
+#endif
+    &hasPWMOnD0,
     &secondsBeforeRestart
 }; 
 Sink* sink = new Sink();
@@ -200,7 +213,9 @@ void saveSettings() {
 
     File f = SPIFFS.open("settings.json", "w");
     f.write((uint8_t*)buf, sz);
+    f.flush();
     f.close();
+    
     free(buf);
 
     debugSerial->println("Saved settings in " + String((millis() - t), DEC));
@@ -227,22 +242,36 @@ std::vector<uint32_t> decodeRGBWString(const char* val) {
 bool wasConnected = false;
 uint32_t saveBrightnessAt = 0x7FFFFFFF;
 
+void WiFiEvent(WiFiEvent_t event) {
+    debugSerial->print("WiFi event "); debugSerial->println(event);
+}
+
+class DummySerial: public Stream {
+    virtual size_t write(uint8_t) {}
+    virtual int available() { return 0; }
+    virtual int read() { return -1; }
+    virtual int peek() { return -1; }
+};
+
 void setup(Sink* _sink) {
     sink = _sink;
     // Serial1.setDebugOutput(true);
     // Serial1.begin(2000000);
     // Serial.begin(2000000);
-    SPIFFS.begin();
+    bool spiffs = SPIFFS.begin();
 
-    debugSerial = &Serial;   
-    debugSerial->begin(230400);
+    HardwareSerial* ds = &Serial;
+    ds->begin(230400);
+
+    debugSerial = ds;
     debugSerial->println("\n\n=====================");
 
     long was = millis();
 
     {   // Read initial settings
-        DynamicJsonDocument jsonBuffer(1000);
         String readVal = fileToString("settings.json");
+        StaticJsonDocument<2000> jsonBuffer;
+        // debugSerial->println(readVal);
         DeserializationError error = deserializeJson(jsonBuffer, readVal.c_str(), readVal.length());
         if (error == DeserializationError::Ok) {
             const JsonObject &root = jsonBuffer.as<JsonObject>();
@@ -252,6 +281,10 @@ void setup(Sink* _sink) {
         } else {
             debugSerial->println("No settings read, use defaults");    
         }
+    }
+
+    if (logToHardwareSerial._value == "false") {
+        debugSerial = new DummySerial();
     }
 
     msBeforeRestart = atoi(secondsBeforeRestart._value.c_str());
@@ -267,6 +300,7 @@ void setup(Sink* _sink) {
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
     if (wifiName._value.length() > 0 && wifiPwd._value.length() > 0) {
+        WiFi.onEvent(WiFiEvent);
         WiFi.mode(WIFI_STA);
         WiFi.hostname("ESP_" + deviceName._value);
         WiFi.onStationModeDisconnected(onDisconnect);
@@ -305,6 +339,9 @@ void setup(Sink* _sink) {
                     break;
                 }
                 case WStype_CONNECTED: {
+                    if (wasConnected) { 
+                        break;
+                    }
                     reconnectWebsocketAt = 0x7FFFFFFF;  // No need to reconnect anymore
                     debugSerial->println("Connected to server");
                     lastReceived = millis();
@@ -326,8 +363,6 @@ void setup(Sink* _sink) {
                         }
                     }
                     devParamsStr += "}";
-
-                    debugSerial->println("Before sending HELLO");
 
                     // Let's say hello and show all we can
                     send(String("{ ") +
@@ -397,15 +432,25 @@ void setup(Sink* _sink) {
                         reportRelayState(id);
                     } else if (type == "setProp") {
                         saveSettings();
+                    #ifndef ESP01
                     } else if (type == "show") {
                         sink->showMessage(root["text"], root["totalMsToShow"].as<int>());
                     } else if (type == "tune") {
                         sink->showTuningMsg(root["text"]);
                     } else if (type == "unixtime") {
                         sink->setTime(root["value"].as<int>());
+                    #endif
                     } else if (type == "ledstripe") {
                         const char* val = (const char*)(root["value"]);
                         sink->setLedStripe(decodeRGBWString(val));
+                    } else if (type == "playmp3") {
+                        uint32_t index = (uint32_t)(root["index"].as<int>());
+                        debugSerial->print("playmp3 ");
+                        debugSerial->println(index);
+                        sink->playMp3(index);
+                    } else if (type == "pwm") {
+                        int val = root["value"].as<int>();
+                        sink->setD0PWM(val);
                     #ifndef ESP01
                     } else if (type == "screenEnable") {
                         int val = root["value"].as<boolean>();
@@ -441,7 +486,7 @@ void setup(Sink* _sink) {
                     if (WiFi.status() == WL_CONNECTED && wasConnected) {
                         wasConnected = false;
                         debugSerial->println("Disconnected from server " + String(length, DEC));
-                        reconnectWebsocketAt = millis() + 2000; // In 2 second, let's try to reconnect
+                        reconnectWebsocketAt = millis() + 4000; // In 4 second, let's try to reconnect
                     }
                     break;
                 }
@@ -473,8 +518,8 @@ void setup(Sink* _sink) {
         
         if (needReboot) {
             saveSettings();
-            request->send(200, "text/html", "Settings changed, rebooting...");  
-            sink->reboot();
+            request->send(200, "text/html", "Settings changed, rebooting in 2 seconds...");  
+            rebootAt = millis() + 2000;
         } else {
             request->send(200, "text/html", "Nothing changed.");  
         }
@@ -509,12 +554,11 @@ void setup(Sink* _sink) {
         request->send(404, "text/plain", "Not found: " + request->url());
     });
     setupServer->begin();
-
-    // ArduinoOTA.setPort(8266);
-    // set host name
-    // ArduinoOTA.setHostname(deviceName._value.c_str());
-
 /*
+    ArduinoOTA.setPort(8266);
+    // set host name
+    ArduinoOTA.setHostname(deviceName._value.c_str());
+
     ArduinoOTA.onStart([]() {
         // debugSerial->println("Start OTA");  //  "Начало OTA-апдейта"
         sink->showMessage("Updating...", 10000);
@@ -546,7 +590,6 @@ void setup(Sink* _sink) {
         }
     });
 */
-    // debugSerial->println("ArduinoOTA.begin");
 }
 
 int32_t lastEachSecond = millis() / 1000;
@@ -555,6 +598,7 @@ int32_t lastLoop = millis();
 
 int32_t oldStatus = WiFi.status();
 int32_t nextReconnect = millis();
+int32_t nextWiFiScan = millis();
 
 void loop() {
     if (millis() - lastLoop > 50) {
@@ -566,7 +610,22 @@ void loop() {
         debugSerial->println(String("WiFi.status() check: ") + WiFi.status());
         bool ret = WiFi.reconnect();
         debugSerial->println(String("Reconnect returned ") + String(ret, DEC));
-        nextReconnect = millis() + (ret ? 3000 : 300);
+        nextReconnect = millis() + (ret ? 4000 : 300);
+    }
+
+    if (millis() > nextWiFiScan) {
+        WiFi.scanNetworks(true);
+
+        nextWiFiScan = millis() + 10000; // Scan every 4 seconds
+    }
+
+    int n = WiFi.scanComplete();
+    if(n >= 0) {
+        debugSerial->printf("%d network(s) found\n", n);
+        for (int i = 0; i < n; i++) {
+            debugSerial->printf("%d: %s, Ch:%d (%ddBm) %s\n", i+1, WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i) == ENC_TYPE_NONE ? "open" : "");
+        }
+        WiFi.scanDelete();
     }
 
     if (oldStatus != WiFi.status()) {
@@ -576,12 +635,13 @@ void loop() {
         if (WiFi.status() == WL_IDLE_STATUS || WiFi.status() == WL_DISCONNECTED) {
             long l = millis();
             debugSerial->println("Reconnecting");
+            reconnectWebsocketAt = 0x7FFFFFFF;
             WiFi.reconnect();
         }
 
         if (WiFi.status() == WL_CONNECTED) {
             debugSerial->println(String("Connected to WiFi, IP:") + WiFi.localIP().toString());
-            reconnectWebsocketAt = millis() + 5; // Wait 1 ms and connect to websocket
+            reconnectWebsocketAt = millis() + 1000; // Wait 1000 ms and connect to websocket
             // ArduinoOTA.begin(); // Begin OTA immediately
             initializedWiFi = true;
         }
@@ -594,16 +654,15 @@ void loop() {
             uint32_t ms = millis();
             webSocketClient->begin(websocketServer._value.c_str(), websocketPort._value.toInt(), "/esp");
             debugSerial->println(String("webSocketClient.begin() took " + String(millis() - ms, DEC)));
-            reconnectWebsocketAt = millis() + 5000; // 5 seconds should be enough to cennect WS
+            reconnectWebsocketAt = millis() + 8000; // 8 seconds should be enough to cennect WS
         }
     }
 
     if (initializedWiFi) {
-        // ArduinoOTA.handle();
         if (webSocketClient.get() != NULL) {
             uint32_t ms = millis();
             webSocketClient->loop();
-            if ((millis() - ms) > 10) {
+            if ((millis() - ms) > 50) {
                 debugSerial->println(String("webSocketClient.loop() took " + String(millis() - ms, DEC)));
             }
         }

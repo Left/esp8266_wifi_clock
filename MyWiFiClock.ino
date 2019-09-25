@@ -10,10 +10,6 @@
 #include <IRutils.h>
 #endif
 
-#ifndef ESP01
-#include <SoftwareSerial.h>
-#endif
-
 #include "worklogic.h"
 
 #ifndef ESP01
@@ -22,13 +18,11 @@
 #include <Q2HX711.h>
 #endif
 
+#ifndef ESP01
+#include <SoftwareSerial.h>
+#endif
+
 unsigned int localPort = 2390;      // local port to listen for UDP packets
-
-IPAddress timeServerIP; // time.nist.gov NTP server address
-const char* ntpServerName = "time.nist.gov";
-
-const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
-byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
 
 const uint64_t dayInMs = 24*60*60*1000;
 
@@ -205,7 +199,9 @@ SoftwareSerial* relay = NULL;
 OneWire* oneWire;
 
 uint32_t lastMsp430Ping = millis();
-SoftwareSerial* msp430; // RX, TX
+SoftwareSerial* msp430 = NULL; // RX, TX
+
+SoftwareSerial* dfplayerSerial = NULL; // RX, TX
 #endif
 
 const int NUMPIXELS = 64;
@@ -216,19 +212,25 @@ Adafruit_NeoPixel* stripe = NULL;
 const long interval = 1000; // Request each second
 unsigned long nextRequest = millis();
 unsigned long nextRead = ULONG_MAX;
+
+#ifndef ESP01
 typedef uint8_t DeviceAddress[8];
-DeviceAddress deviceAddress;
+DeviceAddress deviceAddress = { 0 };
+#endif
 
 int interruptCounter = 0;
 
 uint32_t timeRetreivedInMs = 0;
 uint32_t initialUnixTime = 0;
-uint32_t timeRequestedAt = 0;
 uint32_t restartAt = ULONG_MAX;
+#ifndef ESP01
 uint32_t nextPotentiometer = 0;
 uint32_t potentiometerValues[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 uint32_t potentiometerIndex = 0;
 int32_t reportedPotentiometer = -1;
+
+uint32_t ssdPins[] = { D1, D2, D5, D6 };
+#endif
 
 std::vector<uint32_t> ledStripe;
 
@@ -238,6 +240,61 @@ void handleInterrupt() {
 
 #ifndef ESP01
 boolean encoderPinChanged = false;
+
+
+#define DFPLAYER_RECEIVED_LENGTH 10
+#define DFPLAYER_SEND_LENGTH 10
+
+#define Stack_Header 0
+#define Stack_Version 1
+#define Stack_Length 2
+#define Stack_Command 3
+#define Stack_ACK 4
+#define Stack_Parameter 5
+#define Stack_CheckSum 7
+#define Stack_End 9
+
+uint16_t calculateCheckSum(uint8_t *buffer){
+  uint16_t sum = 0;
+  for (int i=Stack_Version; i<Stack_CheckSum; i++) {
+    sum += buffer[i];
+  }
+  return -sum;
+}
+
+uint16_t arrayToUint16(uint8_t *array){
+  uint16_t value = *array;
+  value <<=8;
+  value += *(array+1);
+  return value;
+}
+
+void uint16ToArray(uint16_t value, uint8_t *array){
+  *array = (uint8_t)(value>>8);
+  *(array+1) = (uint8_t)(value);
+}
+
+void dfPlayerSend(uint8_t command, uint16_t argument) {
+  debugSerial->print("dfPlayerSend:");
+  debugSerial->print(argument);
+  debugSerial->println();
+
+  uint8_t _sending[DFPLAYER_SEND_LENGTH] = {0x7E, 0xFF, 0x06, 0x00, 0x01, 0x00, 0x0, 0x00, 0x00, 0xEF};
+
+  _sending[Stack_Command] = command;
+  // _sending[Stack_ACK] = 1;
+  uint16ToArray(argument, _sending + Stack_Parameter);
+  uint16ToArray(calculateCheckSum(_sending), _sending+Stack_CheckSum);
+
+  debugSerial->print("SEND:");
+  for (int i = 0; i<DFPLAYER_SEND_LENGTH; ++i) {
+    debugSerial->print(String(_sending[i], HEX));
+    debugSerial->print(" ");
+  }
+  debugSerial->println();
+
+  dfplayerSerial->write(_sending, DFPLAYER_SEND_LENGTH);    
+}
 
 class Encoder {
 public:
@@ -339,29 +396,35 @@ void setup() {
 
     virtual void switchRelay(uint32_t id, bool val) {
       // debugSerial->println(String("switchRelaySink: ") + (val ? "true" : "false"));
-#ifndef ESP01
       int bit = 1 << id;
       currRelayState = currRelayState & ~bit;
       if (val) {
         currRelayState = currRelayState | bit;
       }
 
-      if (!relayIsInitialized) {
-        relay = new SoftwareSerial(D1, D0); // RX, TX
-        relay->enableRx(false); // We don't want to receive from it
-        relay->begin(9600);
-        delay(100);
-        relay->write(0x50);
-        delay(100);
-        relay->write(0x51);
-        delay(100);
-        relayIsInitialized = true;
+      if (sceleton::hasSolidStateRelay._value == "true") {
+        if (id >= 0 && id < 4) {
+          digitalWrite(ssdPins[id], val ? 1 : 0);
+        }
+      } else {
+  #ifndef ESP01
+        if (!relayIsInitialized) {
+          relay = new SoftwareSerial(D1, D0); // RX, TX
+          relay->enableRx(false); // We don't want to receive from it
+          relay->begin(9600);
+          delay(100);
+          relay->write(0x50);
+          delay(100);
+          relay->write(0x51);
+          delay(100);
+          relayIsInitialized = true;
+        }
+        
+        relay->write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
+  #endif
       }
-      
-      relay->write('0' | (sceleton::invertRelayControl._value == "true" ? ~currRelayState : currRelayState));
-#endif
       if (sceleton::hasGPIO1Relay._value == "true") {
-        digitalWrite(2, val);
+        digitalWrite(D4, val);
       }
     }
 
@@ -446,6 +509,17 @@ void setup() {
     virtual boolean screenEnabled() { 
       return isScreenEnabled; 
     }
+
+    virtual void setD0PWM(uint32_t val) {
+      uint32_t x = 1024*val/100;
+      analogWrite(2, x);
+    }
+
+    virtual void playMp3(uint32_t index) {
+      #ifndef ESP01
+      dfPlayerSend(0x03, (uint16_t) index); // 
+      #endif
+    }
   };
 
   sceleton::setup(new SinkImpl());
@@ -463,6 +537,7 @@ void setup() {
   if (sceleton::hasIrReceiver._value == "true") {
     irrecv = new IRrecv(D2);
     irrecv->enableIRIn();  // Start the receiver
+    debugSerial->println("IR receiver is initialized");
   }
 #endif
 
@@ -472,6 +547,14 @@ void setup() {
 
     oneWire->reset_search();
 	  oneWire->search(deviceAddress);
+  }
+#endif
+
+#ifndef ESP01
+  if (sceleton::hasDFPlayer._value == "true") {
+    debugSerial->println("Init DFPlayer Mini");
+    dfplayerSerial = new SoftwareSerial(D1, D0); // RX, TX
+    dfplayerSerial->begin(9600);
   }
 #endif
 
@@ -485,6 +568,10 @@ void setup() {
       delete bme;
       bme = NULL;
     }
+  } else {
+    // Turn LED off
+    pinMode(D4, OUTPUT);
+    digitalWrite(D4, 1);
   }
 
 #ifndef ESP01
@@ -519,6 +606,13 @@ void setup() {
     nextPotentiometer = millis() + 100;
   }
 
+  if (sceleton::hasSolidStateRelay._value == "true") {
+    for (int i = 0; i < __countof(ssdPins); ++i) {
+      pinMode(ssdPins[i], OUTPUT);
+      digitalWrite(ssdPins[i], 0);
+    }
+  }
+
   if (sceleton::hasMsp430._value == "true") {
     msp430 = new SoftwareSerial(D1, D0); // RX, TX
     msp430->begin(9600);
@@ -526,8 +620,13 @@ void setup() {
     pinMode(D2, OUTPUT);
     digitalWrite(D2, 1);
   }
-
 #endif
+  if (sceleton::hasPWMOnD0._value == "true") {
+    pinMode(D2, OUTPUT);
+    analogWriteFreq(50);
+    analogWrite(D4, 0);
+  }
+
   if (sceleton::hasGPIO1Relay._value == "true") {
   }
 }
@@ -543,10 +642,14 @@ const int updateTimeEachSec = 600; // By default, update time each 600 seconds
 
 WiFiClient client;
 
-uint32_t lastWeighteningStarted = millis();
 uint32_t lastTemp = millis();
+
+#ifndef ESP01
+uint32_t lastWeighteningStarted = millis();
 long lastWeight = 0;
 uint32_t wrongTempValueReceivedCnt = 0;
+#endif
+
 long lastStripeFrame = millis();
 
 long lastLoop = millis();
@@ -596,8 +699,7 @@ void loop() {
   }
 #endif
 
-  if (bme != NULL && ((millis() - lastTemp) > 2000)) {
-    debugSerial->println("4");
+  if (bme != NULL && ((millis() - lastTemp) > 4000)) {
     lastTemp = millis();
     float hum = bme->readHumidity();
     float temp = bme->readTemperature();
@@ -612,14 +714,14 @@ void loop() {
       { "pressure", pressure },
     };
     for (int i = 0; i < sizeof(toSendArr)/sizeof(toSendArr[0]); ++i) {
-      String toSend = String("{ \"type\": \"") + String(toSendArr[i].name) + String("\", ") + 
-          "\"value\": "  + String(toSendArr[i].value)  + ", " +  
-          "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
-          "}";
-      sceleton::send(toSend);
-
+      if (!isnan(toSendArr[i].value)) {
+        String toSend = String("{ \"type\": \"") + String(toSendArr[i].name) + String("\", ") + 
+            "\"value\": "  + String(toSendArr[i].value)  + ", " +  
+            "\"timeseq\": "  + String((uint32_t)millis(), DEC)  + " " +  
+            "}";
+        sceleton::send(toSend);
+      }
     }
-    // debugSerial->printf("[%f] [%f] [%f]\n", h, t, p);
   }
 
 #ifndef ESP01
@@ -698,12 +800,11 @@ void loop() {
   }
 #endif
 
-  sceleton::loop();
-
 #ifndef ESP01
   if (irrecv != NULL) {
     decode_results results;
     if (irrecv->decode(&results)) {
+      debugSerial->println("\n\n\nHave some results\n\n\n");
       if (results.rawlen > 30) {
         int decodedLen = 0;
         char decoded[300] = {0};
@@ -761,7 +862,6 @@ void loop() {
         }
 
         if (recognized == NULL) {
-          // debugPrint(decoded);
           debugSerial->println("Unrecognized");
         }
       }
@@ -818,7 +918,45 @@ void loop() {
       lastMsp430Ping = millis();
     }
   }
+
+  if (dfplayerSerial != NULL && dfplayerSerial->available() >= DFPLAYER_RECEIVED_LENGTH) {
+    /*
+    debugSerial->println("Got some bytes");
+    for (int i = 0; i < bytes; ++i) {
+      debugSerial->print(String(dfplayerSerial->read(), HEX));
+      debugSerial->print(" ");
+    }
+    debugSerial->println();
+    */
+    uint8_t _serial[DFPLAYER_RECEIVED_LENGTH] = { 0 };
+    dfplayerSerial->readBytes(_serial, DFPLAYER_RECEIVED_LENGTH);
+
+    uint16_t parameter = arrayToUint16(_serial + Stack_Parameter);
+    uint8_t cmd = _serial[Stack_Command];
+
+    switch (cmd) {
+      case 0x41: {
+          debugSerial->println("ACK");
+        }
+        break;
+      case 0x43: {
+          debugSerial->println("Vol: " + String(parameter, DEC));
+        }
+        break;
+      default:
+        {
+          for (int i = 0; i < DFPLAYER_RECEIVED_LENGTH; ++i) {
+            debugSerial->print(String(_serial[i], HEX));
+            debugSerial->print(" ");
+          }
+          debugSerial->println();
+        }
+    }
+  }
 #endif
+
+  sceleton::loop();
+
   // debugSerial->println(String(millis(), DEC));
 #ifndef ESP01
   // Process encoders
@@ -858,6 +996,29 @@ void loop() {
   }
 #endif
 
+#ifndef ESP01
+  if (sceleton::hasDFPlayer._value == "true") {
+    /*
+    if (millis() % 5000 == 0) {
+      debugSerial->println("Requst volume");
+      dfPlayerSend(0x43, 0);
+    }
+    
+    if (millis() % 10000 == 100) {
+      dfPlayerSend(0x06, 23);
+    }
+    if (millis() % 10000 == 300) {
+      dfPlayerSend(0x03, 2); // Play
+    }
+    */
+/*
+    for (;dfplayerSerial->available() > 0;) {
+      int b = dfplayerSerial->read();
+      debugSerial->println(b);
+    }
+*/
+  }
+#endif
+
   lastLoopEnd = millis();
 }
-
